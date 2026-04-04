@@ -36,8 +36,8 @@ def score_command(
     print_eval_report(report)
 
     if save:
-        report_path = exp_dir / 'report.json'
-        report_path.write_text(json.dumps(asdict(report), indent=2))
+        eval_path = exp_dir / 'eval.json'
+        eval_path.write_text(json.dumps(asdict(report), indent=2))
 
         append_to_index(root, report)
-        console.print(f'[green]Report saved to {report_path}[/green]')
+        console.print(f'[green]Report saved to {eval_path}[/green]')
