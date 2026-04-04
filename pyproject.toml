@@ -1,0 +1,46 @@
+[project]
+name = "engram"
+version = "0.1.0"
+description = "AI workflow evaluation and experimentation framework"
+readme = "README.md"
+authors = [
+    { name = "Jason Hyde", email = "github@2bad.me" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic>=0.83.0",
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+    "rich>=14.3.3",
+    "typer>=0.24.0",
+]
+
+[project.scripts]
+engram = "engram.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.9.16,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[dependency-groups]
+dev = [
+    "poethepoet==0.40.0",
+    "pytest-cov==7.0.0",
+    "pytest==9.0.2",
+    "ruff==0.14.14",
+    "ty==0.0.13",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.poe.tasks]
+test = "pytest"
+coverage = "pytest --cov=engram --cov-report=term-missing"
+lint = "ruff check ."
+format = "ruff format ."
+typecheck = "ty check ."
