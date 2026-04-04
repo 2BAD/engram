@@ -1,6 +1,7 @@
 """CLI commands."""
 
 from .compare import compare_command
+from .config import config_app
 from .estimate import estimate_command
 from .init import init_command
 from .run import run_command
@@ -9,6 +10,7 @@ from .status import status_command
 
 __all__ = [
     'compare_command',
+    'config_app',
     'estimate_command',
     'init_command',
     'run_command',
