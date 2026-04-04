@@ -1,0 +1,81 @@
+line-length = 120
+lint.pylint.max-args = 6
+lint.flake8-quotes.inline-quotes = "single"
+
+format.quote-style = "single"
+format.docstring-code-format = true
+
+lint.extend-select = [
+    "E",      # Pycodestyle errors
+    "W",      # Pycodestyle warnings
+    "C90",    # McCabe complexity
+    "I",      # isort
+    "N",      # PEP8 Naming
+    "D",      # Pydocstyle
+    "UP",     # Pyupgrade
+    "YTT",    # Flake8-2020
+    "ASYNC",  # Flake8-async
+    "S",      # Flake8-bandit
+    "BLE",    # Flake8-blind-except
+    "B",      # Flake8-bugbear
+    "A",      # Flake8-builtins
+    "COM",    # Flake8-commas
+    "C4",     # Flake8-comprehensions
+    "DTZ",    # Flake8-datetimez
+    "T10",    # Flake8-debugger
+    "EM",     # Flake8-errmsg
+    "EXE",    # Flake8-executable
+    "FA",     # Flake8-future-annotations
+    "ISC",    # Flake8-implicit-str-concat
+    "ICN",    # Flake8-import-conventions
+    "LOG",    # Flake8-logging
+    "G",      # Flake8-logging-format
+    "INP",    # Flake8-no-pep420
+    "PIE",    # Flake8-pie
+    "PYI",    # Flake8-pyi
+    "PT",     # Flake8-pytest-style
+    "Q",      # Flake8-quotes
+    "RSE",    # Flake8-raise
+    "RET",    # Flake8-return
+    "SLF",    # Flake8-self
+    "SLOT",   # Flake8-slots
+    "SIM",    # Flake8-simplify
+    "TID",    # Flake8-tidy-imports
+    "TC",     # Flake8-type-checking
+    "INT",    # Flake8-gettext
+    "ARG",    # Flake8-unused-arguments
+    "PTH",    # Flake8-use-pathlib
+    "TD",     # Flake8-todos
+    "FIX",    # Flake8-fixme
+    "PD",     # Pandas-vet
+    "PGH",    # Pygrep-hooks
+    "PL",     # Pylint
+    "TRY",    # Tryceratops
+    "FLY",    # Flynt
+    "NPY",    # NumPy-specific rules
+    "PERF",   # Perflint
+    "FURB",   # Refurb
+    "RUF",    # Ruff-specific rules
+]
+
+lint.ignore = [
+    "D1",      # Pydocstyle - missing docstring
+    "D203",    # Pydocstyle - blank line before class docstring
+    "D212",    # Pydocstyle - summary after opening quotes
+    "D401",    # Pydocstyle - imperative mood
+    "S311",    # Flake8-bandit - pseudo-random generators
+    "PERF401", # Perflint - list comprehension replacement
+    "RET504",  # Flake8-return - assignment before return
+    "FA102",   # Flake8-future-annotations - PEP 604 union
+    "TRY003",  # Tryceratops - long exception messages
+    "EM101",   # Flake8-errmsg - string literals in exceptions
+    "TC002",   # Flake8-type-checking - typing imports
+    "TC003",   # Flake8-type-checking - typing imports
+    "COM812",  # Flake8-commas - trailing commas
+    "G004",    # Flake8-logging-format - f-string logging
+]
+
+[lint.per-file-ignores]
+"test_*.py" = ["S101", "S108", "PLR2004", "SLF001", "D", "ANN"]
+"*_test.py" = ["S101", "S108", "PLR2004", "SLF001", "D", "ANN"]
+"*/runners/base.py" = ["ARG002"]
