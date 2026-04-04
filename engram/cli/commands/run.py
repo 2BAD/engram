@@ -16,7 +16,7 @@ def run_command(
     dataset: Annotated[str, typer.Option('--dataset', '-d', help='Dataset name')],
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,
 ) -> None:
-    """Run a workflow implementation against a dataset."""
+    """Evaluate a workflow implementation against a dataset."""
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
