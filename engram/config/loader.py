@@ -54,6 +54,7 @@ def load_implementation(root: Path, name: str) -> ImplementationConfig:
     config_management = ConfigManagement(
         mode=cm_raw.get('mode', 'local'),
         workflow_id=cm_raw.get('workflow_id', ''),
+        jwt_env=cm_raw.get('jwt_env', ''),
     )
 
     return ImplementationConfig(
