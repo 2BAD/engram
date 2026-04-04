@@ -7,7 +7,15 @@ import typer
 from engram.observability.logging import configure_logging
 from engram.observability.output_mode import OutputMode, set_output_mode
 
-from .commands import compare_command, estimate_command, init_command, run_command, score_command, status_command
+from .commands import (
+    compare_command,
+    config_app,
+    estimate_command,
+    init_command,
+    run_command,
+    score_command,
+    status_command,
+)
 
 app = typer.Typer(
     name='engram',
@@ -33,6 +41,7 @@ def main(
 
 
 app.command(name='compare')(compare_command)
+app.add_typer(config_app)
 app.command(name='estimate')(estimate_command)
 app.command(name='init')(init_command)
 app.command(name='run')(run_command)
