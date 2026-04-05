@@ -198,11 +198,24 @@ def _poll_single_trace(
     return None
 
 
+def _unwrap_output(output: Any) -> dict[str, Any]:
+    """Unwrap nested output structure from Dynamiq responses.
+
+    Dynamiq wraps agent output in {"output": {actual_fields}}.
+    Unwrap so scoring can access fields directly.
+    """
+    if not isinstance(output, dict):
+        return {}
+    if list(output.keys()) == ['output'] and isinstance(output['output'], dict):
+        return output['output']
+    return output
+
+
 def _build_result_from_output(output: dict[str, Any], latency_ms: float) -> RunResult:
     """Build RunResult from a sync response output."""
     return RunResult(
         input_file='',
-        output=output if isinstance(output, dict) else {},
+        output=_unwrap_output(output),
         status='succeeded',
         latency_ms=latency_ms,
     )
@@ -213,7 +226,7 @@ def _build_result_from_trace(trace: dict[str, Any], latency_ms: float) -> RunRes
     usage_data = trace.get('usage', {})
     return RunResult(
         input_file='',
-        output=trace.get('output', {}),
+        output=_unwrap_output(trace.get('output', {})),
         status='succeeded',
         usage=TokenUsage(
             prompt_tokens=usage_data.get('prompt_tokens', 0),

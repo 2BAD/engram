@@ -37,7 +37,21 @@ def load_dataset_labels(root: Path, dataset_name: str) -> dict[str, dict[str, An
         return {}
 
     raw = json.loads(labels_path.read_text())
+    if isinstance(raw, list):
+        raw = _labels_array_to_dict(raw)
     if not isinstance(raw, dict):
-        msg = f'labels.json must be a JSON object, got {type(raw).__name__}'
+        msg = f'labels.json must be a JSON object or array, got {type(raw).__name__}'
         raise TypeError(msg)
     return raw
+
+
+def _labels_array_to_dict(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Convert [{filename: "x", ...labels}] to {"x": {labels}}."""
+    result: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if 'filename' not in item:
+            msg = 'Each labels entry must have a "filename" field'
+            raise ValueError(msg)
+        labels = {k: v for k, v in item.items() if k != 'filename'}
+        result[item['filename']] = labels
+    return result

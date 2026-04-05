@@ -39,6 +39,30 @@ def test_load_dataset_labels(tmp_path: Path):
     assert loaded['001.txt']['topic'] == 'A'
 
 
+def test_load_dataset_labels_array_format(tmp_path: Path):
+    ds_dir = tmp_path / 'datasets' / 'test-ds'
+    ds_dir.mkdir(parents=True)
+    labels = [
+        {'filename': '001.txt', 'topic': 'A', 'sentiment': 'Positive'},
+        {'filename': '002.txt', 'topic': 'B', 'sentiment': 'Negative'},
+    ]
+    (ds_dir / 'labels.json').write_text(json.dumps(labels))
+
+    loaded = load_dataset_labels(tmp_path, 'test-ds')
+    assert loaded['001.txt'] == {'topic': 'A', 'sentiment': 'Positive'}
+    assert loaded['002.txt'] == {'topic': 'B', 'sentiment': 'Negative'}
+
+
+def test_load_dataset_labels_array_missing_filename(tmp_path: Path):
+    ds_dir = tmp_path / 'datasets' / 'test-ds'
+    ds_dir.mkdir(parents=True)
+    labels = [{'topic': 'A'}]
+    (ds_dir / 'labels.json').write_text(json.dumps(labels))
+
+    with pytest.raises(ValueError, match='filename'):
+        load_dataset_labels(tmp_path, 'test-ds')
+
+
 def test_load_dataset_labels_missing(tmp_path: Path):
     ds_dir = tmp_path / 'datasets' / 'test-ds'
     ds_dir.mkdir(parents=True)
