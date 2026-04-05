@@ -17,6 +17,8 @@ _BUILTIN_SCORERS: dict[str, Any] = {
     'numeric_tolerance': builtin_scorers.numeric_tolerance,
 }
 
+_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance'}
+
 # Pattern for parameterized scorers like "numeric_tolerance(0.1)" or "fuzzy_match(0.9)"
 _PARAM_PATTERN = re.compile(r'^(\w+)\((.+)\)$')
 
@@ -44,10 +46,9 @@ def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any
     # Check for plain built-in
     if name in _BUILTIN_SCORERS:
         scorer = _BUILTIN_SCORERS[name]
-        # Some built-ins are factories (fuzzy_match, numeric_tolerance)
-        # but when called without args, they should use defaults
-        if callable(scorer):
-            return scorer
+        # fuzzy_match and numeric_tolerance are factories; call with no args for defaults
+        if name in _FACTORY_SCORERS:
+            return scorer()
         return scorer
 
     # Check for custom scorer (format: "scorers.function_name")

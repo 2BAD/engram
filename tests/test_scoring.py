@@ -54,6 +54,18 @@ def test_resolve_parameterized():
     assert not scorer(100, 110)
 
 
+def test_resolve_bare_fuzzy_match():
+    scorer = resolve_scorer('fuzzy_match')
+    assert scorer('hello world', 'hello worl')
+    assert not scorer('hello', 'goodbye')
+
+
+def test_resolve_bare_numeric_tolerance():
+    scorer = resolve_scorer('numeric_tolerance')
+    assert scorer(100, 105)
+    assert not scorer(80, 100)
+
+
 def test_resolve_unknown():
     with pytest.raises(ValueError, match='Unknown scorer'):
         resolve_scorer('nonexistent_scorer')
@@ -201,6 +213,7 @@ def test_score_experiment(tmp_path: Path):
     report = score_experiment(tmp_path, experiment_id)
 
     assert report.experiment_id == experiment_id
+    assert report.matched_examples == 3
     assert len(report.field_metrics) == 1
 
     topic_metrics = report.field_metrics[0]
