@@ -28,7 +28,7 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     labels = load_dataset_labels(root, metadata['dataset'])
     resolved_scorers = {name: resolve_scorer(scorer, workflow_dir) for name, scorer in wf.scorers.items()}
 
-    field_scores, field_predictions = _collect_scores(results, labels, resolved_scorers, wf.confusion_matrices)
+    field_scores, field_predictions, matched_examples = _collect_scores(results, labels, resolved_scorers, wf.confusion_matrices)
 
     all_field_metrics = [
         compute_field_metrics(name, scores) if scores else FieldMetrics(field_name=name)
@@ -46,6 +46,7 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
 
     return EvalReport(
         experiment_id=experiment_id,
+        matched_examples=matched_examples,
         field_metrics=all_field_metrics,
         confusion_matrices=confusion_matrices,
         cost_total_usd=cost_total,
@@ -60,10 +61,11 @@ def _collect_scores(
     labels: dict[str, dict[str, Any]],
     scorers: dict[str, Any],
     cm_fields: list[str],
-) -> tuple[dict[str, list[bool]], dict[str, list[tuple[str, str]]]]:
+) -> tuple[dict[str, list[bool]], dict[str, list[tuple[str, str]]], int]:
     """Score each result against its labels, collecting per-field scores and confusion matrix pairs."""
     field_scores: dict[str, list[bool]] = {f: [] for f in scorers}
     field_predictions: dict[str, list[tuple[str, str]]] = {f: [] for f in cm_fields}
+    matched_examples = 0
 
     for result in results:
         if result.status != 'succeeded':
@@ -71,9 +73,10 @@ def _collect_scores(
         example_labels = labels.get(result.input_file, {})
         if not example_labels:
             continue
+        matched_examples += 1
         _score_single_result(result, example_labels, scorers, field_scores, field_predictions)
 
-    return field_scores, field_predictions
+    return field_scores, field_predictions, matched_examples
 
 
 def _score_single_result(
