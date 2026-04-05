@@ -30,6 +30,7 @@ class EvalReport:
     """Full evaluation report for a scored experiment."""
 
     experiment_id: str
+    matched_examples: int = 0
     field_metrics: list[FieldMetrics] = field(default_factory=list)
     confusion_matrices: list[ConfusionMatrix] = field(default_factory=list)
     cost_total_usd: float = 0.0

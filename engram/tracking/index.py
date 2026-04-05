@@ -24,7 +24,6 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         snap = json.loads(snapshot_path.read_text())
         models = snap.get('models', [])
 
-    matched = sum(fm.total for fm in report.field_metrics)
     macro_accuracy = (
         sum(fm.accuracy for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
     )
@@ -35,7 +34,7 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         'dataset': metadata['dataset'],
         'timestamp': metadata['timestamp'],
         'models': models,
-        'matched_examples': matched,
+        'matched_examples': report.matched_examples,
         'macro_accuracy': round(macro_accuracy, 4),
         'field_accuracy': {fm.field_name: round(fm.accuracy, 4) for fm in report.field_metrics},
         'cost': {
