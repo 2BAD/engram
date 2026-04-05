@@ -9,6 +9,7 @@ from engram.runners.dynamiq import (
     DynamiqRunner,
     _build_result_from_output,
     _build_result_from_trace,
+    _unwrap_output,
     classify_node,
     extract_llm_nodes,
     extract_prompt_text,
@@ -125,11 +126,31 @@ def test_extract_prompt_text_empty():
 # --- Result building ---
 
 
+def test_unwrap_output_nested():
+    assert _unwrap_output({'output': {'topic': 'A', 'sentiment': 'Positive'}}) == {
+        'topic': 'A',
+        'sentiment': 'Positive',
+    }
+
+
+def test_unwrap_output_flat():
+    assert _unwrap_output({'topic': 'A', 'sentiment': 'Positive'}) == {'topic': 'A', 'sentiment': 'Positive'}
+
+
+def test_unwrap_output_non_dict():
+    assert _unwrap_output('not a dict') == {}
+
+
 def test_build_result_from_output():
     result = _build_result_from_output({'topic': 'A', 'sentiment': 'Positive'}, 500.0)
     assert result.status == 'succeeded'
     assert result.output == {'topic': 'A', 'sentiment': 'Positive'}
     assert result.latency_ms == 500.0
+
+
+def test_build_result_from_output_nested():
+    result = _build_result_from_output({'output': {'topic': 'A'}}, 500.0)
+    assert result.output == {'topic': 'A'}
 
 
 def test_build_result_from_trace():
