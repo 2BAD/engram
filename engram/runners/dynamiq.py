@@ -19,7 +19,7 @@ import httpx
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
-from engram.runners.dynamiq_api import management_api
+from engram.runners.dynamiq_api import get_trace, management_api
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
@@ -38,9 +38,10 @@ class DynamiqRunner(Runner):
         self._app_id: str = ''
         self._access_key: str = ''
         self._jwt_env: str = ''
+        self._cache_dir: Path | None = None
         self._initialized = False
 
-    def _ensure_initialized(self, impl_config: ImplementationConfig) -> str | None:
+    def _ensure_initialized(self, impl_config: ImplementationConfig, impl_dir: Path) -> str | None:
         """Resolve hostname on first call, return error string or None."""
         if self._initialized:
             return None
@@ -49,6 +50,7 @@ class DynamiqRunner(Runner):
         self._app_id = rc['app_id']
         self._access_key = os.environ[rc['access_key_env']]
         self._jwt_env = impl_config.config_management.jwt_env
+        self._cache_dir = impl_dir.parent.parent / 'data' / 'cache'
 
         app = management_api(self._jwt_env, f'/apps/{self._app_id}')
         self._hostname = app.get('data', app).get('hostname', '')
@@ -58,9 +60,9 @@ class DynamiqRunner(Runner):
             return f'No hostname found for app {self._app_id}'
         return None
 
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:  # noqa: ARG002
+    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Trigger a Dynamiq workflow and collect the result."""
-        error = self._ensure_initialized(impl_config)
+        error = self._ensure_initialized(impl_config, impl_dir)
         if error:
             return RunResult(input_file='', status='failed', error=error)
 
@@ -99,7 +101,7 @@ class DynamiqRunner(Runner):
         if not trace_id:
             return RunResult(input_file='', status='failed', latency_ms=latency, error='No trace_id in async response')
 
-        return _await_trace(self._jwt_env, self._app_id, trace_id, start, poll_config)
+        return _await_trace(self._jwt_env, self._app_id, trace_id, start, poll_config, self._cache_dir)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Snapshot the deployed workflow config from Dynamiq."""
@@ -147,19 +149,33 @@ class DynamiqRunner(Runner):
 _TRACE_PAGE_SIZE = 100
 
 
-def _await_trace(jwt_env: str, app_id: str, trace_id: str, start: float, poll_config: tuple[float, float]) -> RunResult:
-    """Poll for a trace result and build the RunResult."""
+def _await_trace(
+    jwt_env: str,
+    app_id: str,
+    trace_id: str,
+    start: float,
+    poll_config: tuple[float, float],
+    cache_dir: Path | None = None,
+) -> RunResult:
+    """Poll for a trace result, cache the full detail, and build the RunResult."""
     poll_timeout, poll_interval = poll_config
     trace = _poll_single_trace(jwt_env, app_id, trace_id, poll_timeout, poll_interval)
     total_latency = (time.monotonic() - start) * 1000
 
     if trace is None:
-        return RunResult(input_file='', status='timeout', latency_ms=total_latency, error='Trace polling timed out')
+        return RunResult(
+            input_file='', status='timeout', latency_ms=total_latency,
+            error='Trace polling timed out', trace_id=trace_id,
+        )
     if trace['status'] != 'succeeded':
         return RunResult(
-            input_file='', status='failed', latency_ms=total_latency, error=f'Trace status: {trace["status"]}'
+            input_file='', status='failed', latency_ms=total_latency,
+            error=f'Trace status: {trace["status"]}', trace_id=trace_id,
         )
-    return _build_result_from_trace(trace, total_latency)
+
+    # Fetch and cache the full trace detail
+    full_trace = get_trace(jwt_env, trace_id, cache_dir)
+    return _build_result_from_trace(full_trace, total_latency, trace_id)
 
 
 def _poll_single_trace(
@@ -211,17 +227,18 @@ def _unwrap_output(output: Any) -> dict[str, Any]:
     return output
 
 
-def _build_result_from_output(output: dict[str, Any], latency_ms: float) -> RunResult:
+def _build_result_from_output(output: dict[str, Any], latency_ms: float, trace_id: str = '') -> RunResult:
     """Build RunResult from a sync response output."""
     return RunResult(
         input_file='',
         output=_unwrap_output(output),
         status='succeeded',
         latency_ms=latency_ms,
+        trace_id=trace_id,
     )
 
 
-def _build_result_from_trace(trace: dict[str, Any], latency_ms: float) -> RunResult:
+def _build_result_from_trace(trace: dict[str, Any], latency_ms: float, trace_id: str = '') -> RunResult:
     """Build RunResult from a completed trace."""
     usage_data = trace.get('usage', {})
     return RunResult(
@@ -235,6 +252,7 @@ def _build_result_from_trace(trace: dict[str, Any], latency_ms: float) -> RunRes
         ),
         cost_usd=usage_data.get('total_tokens_cost_usd', 0.0),
         latency_ms=latency_ms,
+        trace_id=trace_id,
     )
 
 
