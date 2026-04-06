@@ -15,6 +15,7 @@ from .commands import (
     run_command,
     score_command,
     status_command,
+    traces_app,
 )
 
 app = typer.Typer(
@@ -47,3 +48,4 @@ app.command(name='init')(init_command)
 app.command(name='eval')(run_command)
 app.command(name='score')(score_command)
 app.command(name='status')(status_command)
+app.add_typer(traces_app)

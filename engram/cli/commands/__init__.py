@@ -7,6 +7,7 @@ from .init import init_command
 from .run import run_command
 from .score import score_command
 from .status import status_command
+from .traces import traces_app
 
 __all__ = [
     'compare_command',
@@ -16,4 +17,5 @@ __all__ = [
     'run_command',
     'score_command',
     'status_command',
+    'traces_app',
 ]
