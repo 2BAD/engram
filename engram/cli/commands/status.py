@@ -33,14 +33,13 @@ def status_command() -> None:
     _print_list('Workflows', workflows)
 
     if implementations:
-        lines = []
+        console.print('[bold]Implementations:[/bold]')
         for name in implementations:
             try:
                 impl = load_implementation(root, name)
-                lines.append(f'{name} ({impl.platform}/{impl.runner})')
+                console.print(f'  {name} ({impl.platform}/{impl.runner})')
             except (OSError, KeyError):
-                lines.append(f'{name} (error loading)')
-        console.print(f'[bold]Implementations:[/bold] {", ".join(lines)}')
+                console.print(f'  {name} (error loading)')
     else:
         console.print('[dim]Implementations: (none)[/dim]')
 
@@ -56,6 +55,8 @@ def status_command() -> None:
 
 def _print_list(title: str, items: list[str]) -> None:
     if items:
-        console.print(f'[bold]{title}:[/bold] {", ".join(items)}')
+        console.print(f'[bold]{title}:[/bold]')
+        for item in items:
+            console.print(f'  {item}')
     else:
         console.print(f'[dim]{title}: (none)[/dim]')
