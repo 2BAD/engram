@@ -11,8 +11,8 @@ from .commands import (
     compare_command,
     config_app,
     estimate_command,
+    eval_command,
     init_command,
-    run_command,
     score_command,
     status_command,
     traces_app,
@@ -44,8 +44,8 @@ def main(
 app.command(name='compare')(compare_command)
 app.add_typer(config_app)
 app.command(name='estimate')(estimate_command)
+app.command(name='eval')(eval_command)
 app.command(name='init')(init_command)
-app.command(name='eval')(run_command)
 app.command(name='score')(score_command)
 app.command(name='status')(status_command)
 app.add_typer(traces_app)
