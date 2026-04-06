@@ -42,6 +42,54 @@ def management_api(
     return resp.json()
 
 
+def fetch_deployment_timeline(jwt_env: str, app_id: str) -> list[dict[str, Any]]:
+    """Fetch all deployments for an app, sorted oldest-first.
+
+    Returns a list of dicts with workflow_version_id, version number,
+    and started_at for building time ranges.
+    """
+    deployments = []
+    page = 1
+    while True:
+        resp = management_api(jwt_env, f'/apps/{app_id}/deployments', {
+            'page': page,
+            'page_size': 100,
+        })
+        deployments.extend(resp.get('data', []))
+        total = resp.get('pagination', {}).get('total_count', 0)
+        if not resp.get('data') or page * 100 >= total:
+            break
+        page += 1
+
+    timeline = []
+    for d in deployments:
+        wv = d.get('workflow_version', {})
+        timeline.append({
+            'workflow_version_id': wv.get('id', ''),
+            'version': wv.get('version'),
+            'deployed_at': d.get('started_at', ''),
+        })
+
+    timeline.sort(key=lambda d: d['deployed_at'])
+    return timeline
+
+
+def match_trace_version(trace_started_at: str, timeline: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Match a trace timestamp to a deployment version using the timeline.
+
+    Each deployment owns the window from its started_at until the next
+    deployment's started_at. The last deployment owns everything after it.
+    """
+    if not timeline:
+        return None
+
+    matched = None
+    for deployment in timeline:
+        if trace_started_at >= deployment['deployed_at']:
+            matched = deployment
+    return matched
+
+
 def get_trace(jwt_env: str, trace_id: str, cache_dir: Path | None = None) -> dict[str, Any]:
     """Fetch full trace detail, serving from local cache when available.
 
