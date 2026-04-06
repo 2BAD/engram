@@ -16,9 +16,10 @@ def save_results(
     implementation: str,
     dataset: str,
     results: list[RunResult],
+    sampling: dict | None = None,
 ) -> None:
     """Save experiment results to exp_dir/results.json."""
-    data = {
+    data: dict = {
         'experiment_id': experiment_id,
         'implementation': implementation,
         'dataset': dataset,
@@ -28,6 +29,8 @@ def save_results(
         'failed': sum(1 for r in results if r.status != 'succeeded'),
         'results': [asdict(r) for r in results],
     }
+    if sampling is not None:
+        data['sampling'] = sampling
     (exp_dir / 'results.json').write_text(json.dumps(data, indent=2))
 
 
