@@ -2,13 +2,14 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
-build/
 .venv/
 
 # Engram
 experiments/
-.engram/
+tools/
+
+# Environment
+.env
 
 # IDE
 .idea/
@@ -17,7 +18,3 @@ experiments/
 
 # OS
 .DS_Store
-
-# Claude
-CLAUDE.md
-.claude/
