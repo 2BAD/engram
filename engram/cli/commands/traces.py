@@ -1,21 +1,24 @@
 """Traces command: pull and cache traces from hosted platforms."""
 
+import json
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
 
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_implementation
-from engram.runners.dynamiq_api import get_trace, management_api
+from engram.runners.dynamiq_api import fetch_deployment_timeline, get_trace, management_api, match_trace_version
 
 console = Console()
 
 traces_app = typer.Typer(name='traces', help='Manage workflow traces.', no_args_is_help=True)
 
 
-def _fetch_all_trace_ids(jwt_env: str, app_id: str) -> list[dict]:
+def _fetch_all_trace_summaries(jwt_env: str, app_id: str) -> list[dict]:
     """List all succeeded trace summaries for an app, paginating through all pages."""
     traces = []
     page = 1
@@ -33,6 +36,40 @@ def _fetch_all_trace_ids(jwt_env: str, app_id: str) -> list[dict]:
             break
         page += 1
     return traces
+
+
+def _build_version_index(
+    trace_summaries: list[dict],
+    timeline: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Map each trace ID to its deployment version using timestamps."""
+    index = {}
+    for t in trace_summaries:
+        version_info = match_trace_version(t['started_at'], timeline)
+        if version_info:
+            index[t['id']] = {
+                'version': version_info['version'],
+                'workflow_version_id': version_info['workflow_version_id'],
+            }
+    return index
+
+
+def _save_trace_index(cache_dir: Path, app_id: str, timeline: list[dict], version_index: dict) -> None:
+    """Save the trace-to-version mapping alongside cached traces."""
+    index_path = cache_dir / 'traces' / 'index.json'
+    existing = {}
+    if index_path.exists():
+        existing = json.loads(index_path.read_text())
+
+    # Merge: keep existing entries, update with new ones
+    traces = existing.get('traces', {})
+    traces.update(version_index)
+
+    index_path.write_text(json.dumps({
+        'app_id': app_id,
+        'deployments': timeline,
+        'traces': traces,
+    }, indent=2))
 
 
 @traces_app.command()
@@ -56,12 +93,26 @@ def pull(
     cache_dir = root / 'data' / 'cache'
 
     console.print(f'Listing traces for [cyan]{implementation}[/cyan]...')
-    trace_summaries = _fetch_all_trace_ids(jwt_env, app_id)
+    trace_summaries = _fetch_all_trace_summaries(jwt_env, app_id)
     console.print(f'  {len(trace_summaries)} succeeded traces')
 
     if not trace_summaries:
         return
 
+    # Build version timeline from deployment history
+    timeline = fetch_deployment_timeline(jwt_env, app_id)
+    version_index = _build_version_index(trace_summaries, timeline)
+
+    # Show version breakdown
+    version_counts: Counter[int | str] = Counter()
+    for info in version_index.values():
+        version_counts[f'v{info["version"]}'] += 1
+    unmatched = len(trace_summaries) - len(version_index)
+    if unmatched:
+        version_counts['unknown'] = unmatched
+    console.print(f'  versions: {dict(version_counts)}')
+
+    # Fetch trace details concurrently
     cached = 0
     fetched = 0
     errors = 0
@@ -87,5 +138,8 @@ def pull(
             except Exception as e:
                 errors += 1
                 console.print(f'  [red]error {tid[:12]}: {e}[/red]')
+
+    # Save version index
+    _save_trace_index(cache_dir, app_id, timeline, version_index)
 
     console.print(f'[green]Done.[/green] {fetched} fetched, {cached} already cached, {errors} errors')
