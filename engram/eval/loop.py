@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -24,9 +25,15 @@ def run_eval(
     implementation_name: str,
     dataset_name: str,
     concurrency: int = 5,
+    limit: int | None = None,
+    seed: int = 0,
 ) -> str:
     """
     Run a workflow against a dataset, save results.
+
+    If `limit` is set and smaller than the dataset size, samples that many inputs
+    deterministically using `seed`. Same seed produces the same subset, so two
+    runs with the same `limit` and `seed` are directly comparable.
 
     Returns the experiment ID.
     """
@@ -36,6 +43,14 @@ def run_eval(
     runner = get_runner(impl_config.runner)
     snapshot = runner.snapshot_config(impl_config, impl_dir)
     inputs = load_dataset_inputs(root, dataset_name)
+
+    sampling: dict | None = None
+    source_total = len(inputs)
+    if limit is not None and limit < source_total:
+        rng = random.Random(seed)
+        inputs = sorted(rng.sample(inputs, limit))
+        sampling = {'limit': limit, 'seed': seed, 'source_total': source_total}
+        log_event('sampling', limit=limit, seed=seed, source_total=source_total)
 
     timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
     experiment_id = f'{implementation_name}_{dataset_name}_{timestamp}'
@@ -70,6 +85,7 @@ def run_eval(
         implementation=implementation_name,
         dataset=dataset_name,
         results=results,
+        sampling=sampling,
     )
 
     return experiment_id
