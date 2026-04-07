@@ -22,7 +22,7 @@ def init_command() -> None:
         (root / d).mkdir(exist_ok=True)
 
     # Gitignore experiment results
-    (root / 'experiments' / '.gitignore').write_text('*\n!.gitignore\n!experiments.jsonl\n')
+    (root / 'experiments' / '.gitignore').write_text('*\n!.gitignore\n!experiments.jsonl\n!baselines.json\n')
 
     config_path.write_text('name: my-project\ndescription: An engram evaluation project\n')
 

@@ -1,5 +1,6 @@
 """CLI commands."""
 
+from .baseline import baseline_app
 from .compare import compare_command
 from .config import config_app
 from .estimate import estimate_command
@@ -10,6 +11,7 @@ from .status import status_command
 from .traces import traces_app
 
 __all__ = [
+    'baseline_app',
     'compare_command',
     'config_app',
     'estimate_command',

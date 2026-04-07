@@ -8,6 +8,7 @@ from engram.observability.logging import configure_logging
 from engram.observability.output_mode import OutputMode, set_output_mode
 
 from .commands import (
+    baseline_app,
     compare_command,
     config_app,
     estimate_command,
@@ -41,6 +42,7 @@ def main(
     configure_logging(json_format=mode.use_json_logging)
 
 
+app.add_typer(baseline_app)
 app.command(name='compare')(compare_command)
 app.add_typer(config_app)
 app.command(name='estimate')(estimate_command)

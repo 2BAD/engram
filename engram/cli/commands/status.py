@@ -11,6 +11,7 @@ from engram.config.discovery import (
 )
 from engram.config.loader import load_implementation, load_project
 from engram.config.validation import validate_project
+from engram.tracking.baseline import load_baselines
 
 console = Console()
 
@@ -29,15 +30,27 @@ def status_command() -> None:
     workflows = discover_workflows(root)
     implementations = discover_implementations(root)
     datasets = discover_datasets(root)
+    baselines = load_baselines(root)
 
-    _print_list('Workflows', workflows)
+    if workflows:
+        console.print('[bold]Workflows:[/bold]')
+        for name in workflows:
+            baseline = baselines.get(name, {}).get('baseline')
+            if baseline:
+                console.print(f'  {name} [dim](baseline: {baseline})[/dim]')
+            else:
+                console.print(f'  {name}')
+    else:
+        console.print('[dim]Workflows: (none)[/dim]')
 
     if implementations:
         console.print('[bold]Implementations:[/bold]')
         for name in implementations:
             try:
                 impl = load_implementation(root, name)
-                console.print(f'  {name} ({impl.platform}/{impl.runner})')
+                reference = baselines.get(impl.workflow, {}).get('references', {}).get(name)
+                suffix = f' [dim](ref: {reference})[/dim]' if reference else ''
+                console.print(f'  {name} ({impl.platform}/{impl.runner}){suffix}')
             except (OSError, KeyError):
                 console.print(f'  {name} (error loading)')
     else:
