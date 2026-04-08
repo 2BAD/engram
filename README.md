@@ -18,7 +18,9 @@ uv add engram
 engram init
 engram eval <implementation> --dataset <dataset>
 engram score <experiment-id> --save
-engram compare <experiment-a> <experiment-b> --prompts
+engram baseline set <experiment-id>
+engram compare <experiment-id> --prompts
+engram baseline promote <experiment-id>
 engram estimate <implementation> --dataset <dataset>
 ```
 
