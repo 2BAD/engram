@@ -86,6 +86,43 @@ def test_init_refuses_existing(tmp_path: Path):
     assert result.exit_code == 1
 
 
+def test_init_scaffolds_env_example(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """init writes a .env.example listing the two API keys used by the scaffolded runners."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ['init'])
+    assert result.exit_code == 0
+
+    env_example = (tmp_path / '.env.example').read_text()
+    assert 'ANTHROPIC_API_KEY=' in env_example
+    assert 'OPENAI_API_KEY=' in env_example
+    # And the quickstart message tells the user how to activate it.
+    assert 'cp .env.example .env' in result.output
+
+
+def test_cli_loads_dotenv_from_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Running any engram command in a project populates os.environ from <root>/.env."""
+    # Minimal project skeleton (no workflows needed — status tolerates an empty project).
+    (tmp_path / 'engram.yaml').write_text('name: envtest\n')
+    for d in ['workflows', 'implementations', 'datasets', 'experiments']:
+        (tmp_path / d).mkdir()
+    (tmp_path / '.env').write_text('ENGRAM_TEST_KEY_FROM_DOTENV=hello-from-env\n')
+
+    monkeypatch.delenv('ENGRAM_TEST_KEY_FROM_DOTENV', raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['status'])
+    assert result.exit_code == 0
+    # The callback ran and set the var before the subcommand executed.
+    assert os.environ.get('ENGRAM_TEST_KEY_FROM_DOTENV') == 'hello-from-env'
+
+
+def test_cli_outside_project_does_not_crash_without_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Running engram outside a project (no engram.yaml anywhere above) is a silent no-op for .env loading."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ['--help'])
+    assert result.exit_code == 0
+
+
 def test_status_no_project(tmp_path: Path):
     os.chdir(tmp_path)
     result = runner.invoke(app, ['status'])

@@ -17,6 +17,13 @@ _GITIGNORE = """\
 __pycache__/
 """
 
+_ENV_EXAMPLE = """\
+# Copy this file to `.env` and fill in your keys. Engram loads `.env` from the
+# project root on every command, so exports aren't needed once this is in place.
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+"""
+
 _EXPERIMENTS_GITIGNORE = '*\n!.gitignore\n!experiments.jsonl\n!baselines.json\n'
 
 _WORKFLOW_YAML = """\
@@ -110,6 +117,7 @@ _LABELS_JSON = """\
 _TEMPLATES: dict[str, str] = {
     'engram.yaml': _ENGRAM_YAML,
     '.gitignore': _GITIGNORE,
+    '.env.example': _ENV_EXAMPLE,
     'experiments/.gitignore': _EXPERIMENTS_GITIGNORE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
     # Two implementations of the same workflow so the project is ready for a
@@ -146,9 +154,7 @@ def init_command() -> None:
     console.print('  [bold]classify-openai[/bold]     — OpenAI Chat Completions API')
     console.print()
     console.print('[bold]Next steps:[/bold]')
-    console.print('  1. Set at least one API key:')
-    console.print('       [cyan]export ANTHROPIC_API_KEY=sk-ant-...[/cyan]')
-    console.print('       [cyan]export OPENAI_API_KEY=sk-...[/cyan]')
+    console.print('  1. Add at least one API key: [cyan]cp .env.example .env[/cyan] and edit it')
     console.print('  2. Verify the setup:  [cyan]engram status[/cyan]')
     console.print('  3. Run both evals:')
     console.print('       [cyan]engram eval classify-anthropic --dataset sample[/cyan]')

@@ -4,6 +4,8 @@ from typing import Annotated
 
 import typer
 
+from engram.config.discovery import find_project_root
+from engram.config.env import load_project_env
 from engram.observability.logging import configure_logging
 from engram.observability.output_mode import OutputMode, set_output_mode
 
@@ -40,6 +42,13 @@ def main(
     mode = OutputMode.detect(force_json=json_output)
     set_output_mode(mode)
     configure_logging(json_format=mode.use_json_logging)
+
+    # Populate os.environ from <project-root>/.env before any command runs, so API
+    # keys and other runner config can live in the project dir instead of the shell.
+    # Silently no-ops outside a project (e.g. `engram init`, `engram --help`).
+    project_root = find_project_root()
+    if project_root is not None:
+        load_project_env(project_root)
 
 
 app.add_typer(baseline_app)
