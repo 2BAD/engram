@@ -124,6 +124,91 @@ def test_read_index_empty(tmp_path: Path):
     assert read_index(tmp_path) == []
 
 
+def test_index_records_avg_output_tokens(tmp_path: Path):
+    """Mean completion tokens across runs with a recorded response land in the index."""
+    (tmp_path / 'experiments').mkdir()
+    exp_id = 'test-exp'
+    exp_dir = tmp_path / 'experiments' / exp_id
+    exp_dir.mkdir()
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': exp_id,
+                'implementation': 'classify-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+                'total': 3,
+                'succeeded': 2,
+                'failed': 1,
+                'results': [
+                    {
+                        'input_file': '001.txt',
+                        'output': {'topic': 'A'},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 100, 'completion_tokens': 40, 'total_tokens': 140},
+                        'cost_usd': 0.01,
+                        'latency_ms': 500,
+                        'error': '',
+                    },
+                    {
+                        'input_file': '002.txt',
+                        'output': {'topic': 'B'},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 100, 'completion_tokens': 60, 'total_tokens': 160},
+                        'cost_usd': 0.01,
+                        'latency_ms': 500,
+                        'error': '',
+                    },
+                    # API-error path: no tokens recorded, excluded from calibration.
+                    {
+                        'input_file': '003.txt',
+                        'output': {},
+                        'status': 'failed',
+                        'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+                        'cost_usd': 0.0,
+                        'latency_ms': 100,
+                        'error': 'api error',
+                    },
+                ],
+            }
+        )
+    )
+    (exp_dir / 'config-snapshot.json').write_text(json.dumps({'models': ['claude-sonnet']}))
+
+    append_to_index(tmp_path, EvalReport(experiment_id=exp_id, field_metrics=[]))
+
+    entries = read_index(tmp_path)
+    assert entries[0]['avg_output_tokens'] == 50  # mean of 40 and 60
+
+
+def test_index_omits_avg_output_tokens_when_no_data(tmp_path: Path):
+    """When every run failed before tokens were recorded, the field is omitted."""
+    (tmp_path / 'experiments').mkdir()
+    exp_id = 'empty-exp'
+    exp_dir = tmp_path / 'experiments' / exp_id
+    exp_dir.mkdir()
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': exp_id,
+                'implementation': 'classify-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+                'total': 0,
+                'succeeded': 0,
+                'failed': 0,
+                'results': [],
+            }
+        )
+    )
+    (exp_dir / 'config-snapshot.json').write_text(json.dumps({'models': ['claude-sonnet']}))
+
+    append_to_index(tmp_path, EvalReport(experiment_id=exp_id, field_metrics=[]))
+
+    entries = read_index(tmp_path)
+    assert 'avg_output_tokens' not in entries[0]
+
+
 # --- Field Delta ---
 
 

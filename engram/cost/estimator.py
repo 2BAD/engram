@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from engram.config.loader import load_implementation
+from engram.config.loader import load_implementation, load_project
 from engram.cost.pricing import find_rate, load_pricing
 from engram.datasets.loader import load_dataset_inputs
 from engram.tracking.index import read_index
@@ -26,9 +26,9 @@ def estimate_cost(
     impl_config = load_implementation(root, implementation_name)
     impl_dir = root / 'implementations' / implementation_name
 
-    # Load pricing
-    project_overrides = {}  # Could come from engram.yaml in the future
-    pricing = load_pricing(overrides=project_overrides)
+    # Load pricing, applying any project-level overrides from engram.yaml.
+    project = load_project(root)
+    pricing = load_pricing(overrides=project.pricing_overrides)
 
     model = impl_config.runner_config.get('model', '')
     input_rate, output_rate = find_rate(pricing, model)

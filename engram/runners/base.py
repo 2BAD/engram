@@ -31,3 +31,7 @@ class Runner(ABC):
     ) -> float | None:
         """Estimate cost for a single input. Returns None if not supported."""
         return None
+
+    def configure_pricing(self, overrides: dict[str, dict[str, float]]) -> None:
+        """Optional hook: pre-load pricing data with project overrides applied. No-op by default."""
+        return

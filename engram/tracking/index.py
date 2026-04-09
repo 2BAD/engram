@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def append_to_index(root: Path, report: EvalReport) -> None:
     """Append an experiment summary to experiments/experiments.jsonl."""
     exp_dir = root / 'experiments' / report.experiment_id
-    metadata, _results = load_results(exp_dir)
+    metadata, results = load_results(exp_dir)
 
     # Load config snapshot for model info
     snapshot_path = exp_dir / 'config-snapshot.json'
@@ -42,6 +42,13 @@ def append_to_index(root: Path, report: EvalReport) -> None:
             'avg_usd': round(report.cost_avg_usd, 4),
         },
     }
+
+    # Calibration data for `engram estimate`: mean output tokens across runs
+    # where we actually got a response. Omitted when absent so the estimator
+    # falls back to its default instead of reading a degenerate 0.
+    output_tokens = [r.usage.completion_tokens for r in results if r.usage.completion_tokens > 0]
+    if output_tokens:
+        summary['avg_output_tokens'] = round(sum(output_tokens) / len(output_tokens))
 
     index_path = root / 'experiments' / 'experiments.jsonl'
     with index_path.open('a') as f:

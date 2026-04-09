@@ -1,5 +1,6 @@
 """Tests for cost estimation and pricing."""
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -108,3 +109,71 @@ def test_estimate_cost(tmp_path: Path):
     assert result['total_estimated_cost_usd'] > 0
     assert len(result['examples']) == 2
     assert result['examples'][0]['estimated_cost_usd'] > 0
+
+
+def test_estimate_applies_project_pricing_overrides(tmp_path: Path):
+    """Overrides declared in engram.yaml are merged into the pricing table."""
+    _setup_estimator_project(tmp_path)
+
+    # Override rates for the model the project uses: 10x input, 10x output.
+    (tmp_path / 'engram.yaml').write_text(
+        'name: test\n'
+        'pricing_overrides:\n'
+        '  claude-sonnet-4-5-20250514:\n'
+        '    input_cost_per_token: 0.00003\n'
+        '    output_cost_per_token: 0.00015\n'
+    )
+
+    baseline_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+        }
+    }
+
+    with patch('engram.cost.estimator.load_pricing') as mock_load:
+        # Simulate load_pricing actually applying overrides by echoing the call.
+        def _apply(overrides=None):
+            merged = dict(baseline_pricing)
+            if overrides:
+                for model, rates in overrides.items():
+                    merged[model] = {**merged[model], **rates}
+            return merged
+
+        mock_load.side_effect = _apply
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    # load_pricing must have been called with the project overrides.
+    call_kwargs = mock_load.call_args.kwargs
+    assert call_kwargs['overrides']['claude-sonnet-4-5-20250514']['input_cost_per_token'] == 0.00003
+    # And the overridden rates flow through to the final estimate.
+    assert result['input_rate_per_token'] == 0.00003
+    assert result['output_rate_per_token'] == 0.00015
+
+
+def test_estimate_uses_historical_calibration(tmp_path: Path):
+    """With a prior experiment in the index, output tokens come from history, not the 500 default."""
+    _setup_estimator_project(tmp_path)
+
+    # Seed the index with a prior experiment recording 200 avg output tokens.
+    index_entry = {
+        'id': 'prior-exp',
+        'implementation': 'classify-api',
+        'dataset': 'test-ds',
+        'timestamp': '2026-04-04T12:00:00Z',
+        'avg_output_tokens': 200,
+    }
+    (tmp_path / 'experiments' / 'experiments.jsonl').write_text(json.dumps(index_entry) + '\n')
+
+    fake_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+        }
+    }
+
+    with patch('engram.cost.estimator.load_pricing', return_value=fake_pricing):
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    assert result['avg_output_tokens'] == 200
+    assert result['examples'][0]['estimated_output_tokens'] == 200

@@ -163,6 +163,44 @@ def test_api_runner_trigger_parse_failure_still_records_cost(tmp_path: Path):
     assert result.cost_usd == pytest.approx(0.00105)
 
 
+def test_api_runner_configure_pricing_overrides_rates(tmp_path: Path):
+    """configure_pricing pre-loads the table, and overrides take effect on cost."""
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+
+    # Doubled rates vs _FAKE_PRICING: 0.000006 input, 0.00003 output.
+    overridden = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000006,
+            'output_cost_per_token': 0.00003,
+        },
+    }
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=overridden) as mock_load,
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        runner = AnthropicApiRunner()
+        runner.configure_pricing({'claude-sonnet-4-5-20250514': {'input_cost_per_token': 0.000006}})
+        result = runner.trigger('input', impl_config, tmp_path)
+
+    # configure_pricing forwarded the overrides to load_pricing.
+    assert mock_load.call_args.kwargs['overrides']['claude-sonnet-4-5-20250514']['input_cost_per_token'] == 0.000006
+    # And the cached table is used for the cost calculation:
+    # 100 * 0.000006 + 50 * 0.00003 = 0.0006 + 0.0015 = 0.0021
+    assert result.cost_usd == pytest.approx(0.0021)
+
+
 def test_api_runner_snapshot(tmp_path: Path):
     prompts_dir = tmp_path / 'prompts'
     prompts_dir.mkdir()

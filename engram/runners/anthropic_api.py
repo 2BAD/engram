@@ -26,6 +26,10 @@ class AnthropicApiRunner(Runner):
     def __init__(self) -> None:
         self._pricing: dict[str, Any] | None = None
 
+    def configure_pricing(self, overrides: dict[str, dict[str, float]]) -> None:
+        """Eager-load the pricing table with project overrides applied."""
+        self._pricing = load_pricing(overrides=overrides)
+
     def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Send input to the Anthropic API and parse the JSON response."""
         rc = impl_config.runner_config

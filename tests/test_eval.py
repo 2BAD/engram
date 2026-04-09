@@ -139,6 +139,9 @@ class _StubRunner:
     def trigger(self, content, *_args, **_kwargs):
         return RunResult(input_file='', status='succeeded', output={'echo': content})
 
+    def configure_pricing(self, _overrides):
+        pass
+
 
 def _stub_load_impl(*_a, **_k) -> ImplementationConfig:
     return ImplementationConfig(workflow='wf', platform='api', runner='stub')

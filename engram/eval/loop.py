@@ -11,7 +11,7 @@ from pathlib import Path
 
 from rich.progress import Progress
 
-from engram.config.loader import load_implementation
+from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
 from engram.eval.results import save_results
 from engram.models.run import RunResult
@@ -42,6 +42,12 @@ def run_eval(
 
     runner = get_runner(impl_config.runner)
     snapshot = runner.snapshot_config(impl_config, impl_dir)
+
+    # Apply project-level pricing overrides (if engram.yaml is present) so the
+    # runner's per-call cost calculation uses the same rates as `engram estimate`.
+    pricing_overrides = load_project(root).pricing_overrides if (root / 'engram.yaml').exists() else {}
+    runner.configure_pricing(pricing_overrides)
+
     inputs = load_dataset_inputs(root, dataset_name)
 
     sampling: dict | None = None
