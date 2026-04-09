@@ -140,6 +140,42 @@ def test_read_index_empty(tmp_path: Path):
     assert read_index(tmp_path) == []
 
 
+def test_append_to_index_upserts_rescored_experiment(tmp_path: Path):
+    """Re-scoring an experiment replaces its entry in place, not as a duplicate."""
+    (tmp_path / 'experiments').mkdir()
+
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A')
+    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B')
+    _setup_experiment(tmp_path, 'exp-c', 'classify-api', 'test-ds', 'A')
+
+    def _report(exp_id: str, accuracy: float) -> EvalReport:
+        return EvalReport(
+            experiment_id=exp_id,
+            field_metrics=[
+                FieldMetrics(
+                    field_name='topic',
+                    accuracy=accuracy,
+                    precision=accuracy,
+                    recall=accuracy,
+                    f1=accuracy,
+                    total=1,
+                    correct=int(accuracy),
+                )
+            ],
+        )
+
+    append_to_index(tmp_path, _report('exp-a', 1.0))
+    append_to_index(tmp_path, _report('exp-b', 0.5))
+    append_to_index(tmp_path, _report('exp-c', 0.0))
+
+    # Re-score exp-b with new metrics: should replace in place, not duplicate.
+    append_to_index(tmp_path, _report('exp-b', 1.0))
+
+    entries = read_index(tmp_path)
+    assert [e['id'] for e in entries] == ['exp-a', 'exp-b', 'exp-c']
+    assert entries[1]['macro_accuracy'] == 1.0
+
+
 def test_index_records_avg_output_tokens(tmp_path: Path):
     """Mean completion tokens across runs with a recorded response land in the index."""
     (tmp_path / 'experiments').mkdir()

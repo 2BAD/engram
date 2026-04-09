@@ -1,4 +1,4 @@
-"""Experiment index: append-only JSONL log of scored experiments."""
+"""Experiment index: JSONL log of scored experiments, keyed by experiment id."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def append_to_index(root: Path, report: EvalReport) -> None:
-    """Append an experiment summary to experiments/experiments.jsonl."""
+    """Upsert an experiment summary into experiments.jsonl, replacing any prior entry with the same id."""
     exp_dir = root / 'experiments' / report.experiment_id
     metadata, results = load_results(exp_dir)
 
@@ -57,8 +57,19 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         summary['avg_output_tokens'] = round(sum(output_tokens) / len(output_tokens))
 
     index_path = root / 'experiments' / 'experiments.jsonl'
-    with index_path.open('a') as f:
-        f.write(json.dumps(summary) + '\n')
+    existing = read_index(root)
+    replaced = False
+    for i, entry in enumerate(existing):
+        if entry.get('id') == summary['id']:
+            existing[i] = summary
+            replaced = True
+            break
+    if not replaced:
+        existing.append(summary)
+
+    with index_path.open('w') as f:
+        for entry in existing:
+            f.write(json.dumps(entry) + '\n')
 
 
 def read_index(root: Path) -> list[dict[str, Any]]:
