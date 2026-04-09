@@ -67,6 +67,14 @@ def _make_impl_config(**overrides) -> ImplementationConfig:
     return ImplementationConfig(**defaults)
 
 
+_FAKE_PRICING = {
+    'claude-sonnet-4-5-20250514': {
+        'input_cost_per_token': 0.000003,
+        'output_cost_per_token': 0.000015,
+    },
+}
+
+
 def test_api_runner_trigger(tmp_path: Path):
     # Set up prompt file
     prompts_dir = tmp_path / 'prompts'
@@ -83,6 +91,7 @@ def test_api_runner_trigger(tmp_path: Path):
     with (
         patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
         patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
 
@@ -94,6 +103,64 @@ def test_api_runner_trigger(tmp_path: Path):
     assert result.usage.prompt_tokens == 100
     assert result.usage.completion_tokens == 50
     assert result.latency_ms > 0
+    # 100 * 0.000003 + 50 * 0.000015 = 0.0003 + 0.00075 = 0.00105
+    assert result.cost_usd == pytest.approx(0.00105)
+
+
+def test_api_runner_trigger_unknown_model_zero_cost(tmp_path: Path):
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'claude-unknown-model',
+            'max_tokens': '4096',
+        },
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert result.status == 'succeeded'
+    assert result.cost_usd == 0.0
+
+
+def test_api_runner_trigger_parse_failure_still_records_cost(tmp_path: Path):
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='not valid json at all')]
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'Failed to parse JSON' in result.error
+    # Cost is charged even when parsing fails — the API call succeeded.
+    assert result.cost_usd == pytest.approx(0.00105)
 
 
 def test_api_runner_snapshot(tmp_path: Path):

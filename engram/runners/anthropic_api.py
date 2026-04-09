@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import anthropic
 
+from engram.cost.pricing import find_rate, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
 
 class AnthropicApiRunner(Runner):
     """Runner that calls the Anthropic Messages API directly."""
+
+    def __init__(self) -> None:
+        self._pricing: dict[str, Any] | None = None
 
     def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Send input to the Anthropic API and parse the JSON response."""
@@ -52,6 +56,7 @@ class AnthropicApiRunner(Runner):
             completion_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
         )
+        cost_usd = self._compute_cost(model, usage)
 
         raw_text = response.content[0].text if response.content else ''
         output = _parse_json_output(raw_text)
@@ -62,6 +67,7 @@ class AnthropicApiRunner(Runner):
                 output={},
                 status='failed',
                 usage=usage,
+                cost_usd=cost_usd,
                 latency_ms=latency,
                 error=f'Failed to parse JSON from response: {raw_text[:200]}',
             )
@@ -71,8 +77,16 @@ class AnthropicApiRunner(Runner):
             output=output,
             status='succeeded',
             usage=usage,
+            cost_usd=cost_usd,
             latency_ms=latency,
         )
+
+    def _compute_cost(self, model: str, usage: TokenUsage) -> float:
+        """Compute USD cost from token usage using cached LiteLLM pricing data."""
+        if self._pricing is None:
+            self._pricing = load_pricing()
+        input_rate, output_rate = find_rate(self._pricing, model)
+        return usage.prompt_tokens * input_rate + usage.completion_tokens * output_rate
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""
