@@ -30,6 +30,32 @@ engram baseline promote <experiment-id>                # promote as the implemen
 
 Swap `classify-api` and `sample` for your own names once you replace the example.
 
+## Supported runners
+
+| Runner           | Platform             | Notes                                                               |
+| ---------------- | -------------------- | ------------------------------------------------------------------- |
+| `anthropic`      | Anthropic Messages API | Direct API calls; JSON parsed from prompt-controlled output.     |
+| `anthropic-agent`| Local Python agent   | Runs a user-supplied `entry_point` function; usage/cost returned by the agent. |
+| `openai`         | OpenAI Chat Completions API | JSON mode (`response_format={"type": "json_object"}`) for reliable output. |
+| `dynamiq`        | Dynamiq hosted platform | HTTP trigger with platform-reported cost from trace data.        |
+
+To use the OpenAI runner, write an implementation like:
+
+```yaml
+# implementations/classify-openai/implementation.yaml
+workflow: classify
+platform: api
+runner: openai
+runner_config:
+  api_key_env: OPENAI_API_KEY
+  model: gpt-5.4-nano
+  max_tokens: "1024"
+config_management:
+  mode: local
+```
+
+Then `export OPENAI_API_KEY=...` and run `engram eval classify-openai --dataset sample` to evaluate the same workflow against OpenAI. Compare runs across runners with `engram compare`.
+
 ## Development
 
 ```sh
