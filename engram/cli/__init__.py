@@ -15,6 +15,7 @@ from .commands import (
     config_app,
     estimate_command,
     eval_command,
+    experiments_app,
     init_command,
     score_command,
     status_command,
@@ -56,6 +57,7 @@ app.command(name='compare')(compare_command)
 app.add_typer(config_app)
 app.command(name='estimate')(estimate_command)
 app.command(name='eval')(eval_command)
+app.add_typer(experiments_app)
 app.command(name='init')(init_command)
 app.command(name='score')(score_command)
 app.command(name='status')(status_command)
