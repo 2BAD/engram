@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import anthropic
 import pytest
 
 from engram.models.implementation import ConfigManagement, ImplementationConfig
@@ -161,6 +162,104 @@ def test_api_runner_trigger_parse_failure_still_records_cost(tmp_path: Path):
     assert 'Failed to parse JSON' in result.error
     # Cost is charged even when parsing fails — the API call succeeded.
     assert result.cost_usd == pytest.approx(0.00105)
+
+
+def test_api_runner_trigger_api_error(tmp_path: Path):
+    """A raised anthropic.APIError yields a failed RunResult with the error captured."""
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        err = anthropic.APIError('rate limit exceeded', request=MagicMock(), body=None)
+        mock_cls.return_value.messages.create.side_effect = err
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'rate limit exceeded' in result.error
+    assert result.cost_usd == 0.0
+    assert result.usage.prompt_tokens == 0
+
+
+def test_api_runner_trigger_missing_system_prompt(tmp_path: Path):
+    """Runner works when prompts/system.md is absent (empty system prompt)."""
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        # Verify the call went through with an empty system string.
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['system'] == ''
+
+    assert result.status == 'succeeded'
+    assert result.output == {'topic': 'A'}
+
+
+def test_api_runner_trigger_empty_content(tmp_path: Path):
+    """A response with no content blocks is treated as a parse failure, cost still recorded."""
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = []
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'Failed to parse JSON' in result.error
+    assert result.cost_usd == pytest.approx(0.00105)
+
+
+def test_api_runner_trigger_non_dict_json(tmp_path: Path):
+    """An array-shaped JSON response fails at trigger level (scorers expect a dict)."""
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='[1, 2, 3]')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'Failed to parse JSON' in result.error
 
 
 def test_api_runner_configure_pricing_overrides_rates(tmp_path: Path):

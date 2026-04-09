@@ -8,6 +8,8 @@ from engram.models.dataset import DatasetConfig
 from engram.models.implementation import ConfigManagement, ImplementationConfig
 from engram.models.project import ProjectConfig
 from engram.models.workflow import OutputField, WorkflowConfig
+from engram.runners.registry import validate_runner_name
+from engram.scoring.registry import validate_scorer_name
 
 
 def load_project(root: Path) -> ProjectConfig:
@@ -33,6 +35,14 @@ def load_workflow(root: Path, name: str) -> WorkflowConfig:
             description=field_def.get('description', ''),
         )
 
+    scorers = raw.get('scorers', {})
+    for field_name, scorer_name in scorers.items():
+        try:
+            validate_scorer_name(scorer_name)
+        except ValueError as e:
+            msg = f'workflow "{name}" field "{field_name}": {e}'
+            raise ValueError(msg) from e
+
     input_config = raw.get('input', {})
     return WorkflowConfig(
         name=raw['name'],
@@ -40,7 +50,7 @@ def load_workflow(root: Path, name: str) -> WorkflowConfig:
         input_type=input_config.get('type', 'text'),
         input_description=input_config.get('description', ''),
         output_fields=output_fields,
-        scorers=raw.get('scorers', {}),
+        scorers=scorers,
         confusion_matrices=raw.get('confusion_matrices', []),
     )
 
@@ -57,10 +67,17 @@ def load_implementation(root: Path, name: str) -> ImplementationConfig:
         jwt_env=cm_raw.get('jwt_env', ''),
     )
 
+    runner_name = raw['runner']
+    try:
+        validate_runner_name(runner_name)
+    except ValueError as e:
+        msg = f'implementation "{name}": {e}'
+        raise ValueError(msg) from e
+
     return ImplementationConfig(
         workflow=raw['workflow'],
         platform=raw['platform'],
-        runner=raw['runner'],
+        runner=runner_name,
         runner_config=raw.get('runner_config', {}),
         config_management=config_management,
     )

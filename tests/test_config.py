@@ -152,3 +152,36 @@ def test_validate_scorer_unknown_field(full_project):
     wf_path.write_text(content)
     errors = validate_project(full_project)
     assert any('unknown field' in e for e in errors)
+
+
+def test_load_implementation_rejects_unknown_runner(full_project):
+    impl_path = full_project / 'implementations' / 'classify-api' / 'implementation.yaml'
+    impl_path.write_text(IMPL_API_YAML.replace('runner: anthropic', 'runner: bogus-runner'))
+
+    with pytest.raises(ValueError, match='Unknown runner "bogus-runner"'):
+        load_implementation(full_project, 'classify-api')
+
+
+def test_load_workflow_rejects_unknown_scorer(full_project):
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(WORKFLOW_YAML.replace('topic: exact_match', 'topic: nonesuch_scorer'))
+
+    with pytest.raises(ValueError, match='Unknown scorer "nonesuch_scorer"'):
+        load_workflow(full_project, 'classify')
+
+
+def test_load_workflow_rejects_unknown_parameterized_scorer(full_project):
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(WORKFLOW_YAML.replace('topic: exact_match', 'topic: bogus_match(0.5)'))
+
+    with pytest.raises(ValueError, match='Unknown scorer "bogus_match"'):
+        load_workflow(full_project, 'classify')
+
+
+def test_load_workflow_accepts_custom_scorer_path(full_project):
+    """Custom scorer paths (with '.') pass load-time validation without file check."""
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(WORKFLOW_YAML.replace('topic: exact_match', 'topic: scorers.my_custom'))
+
+    wf = load_workflow(full_project, 'classify')
+    assert wf.scorers['topic'] == 'scorers.my_custom'

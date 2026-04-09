@@ -23,6 +23,28 @@ _FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance'}
 _PARAM_PATTERN = re.compile(r'^(\w+)\((.+)\)$')
 
 
+def validate_scorer_name(name: str) -> None:
+    """Raise ValueError unless `name` is a built-in, a parameterized built-in, or a `module.func` path."""
+    match = _PARAM_PATTERN.match(name)
+    if match:
+        base_name = match.group(1)
+        if base_name not in _BUILTIN_SCORERS:
+            msg = f'Unknown scorer "{base_name}"'
+            raise ValueError(msg)
+        return
+
+    if name in _BUILTIN_SCORERS:
+        return
+
+    if '.' in name:
+        # Custom scorer path; resolution is deferred to score time.
+        return
+
+    available = ', '.join(sorted(_BUILTIN_SCORERS.keys()))
+    msg = f'Unknown scorer "{name}". Built-ins: {available}. Custom scorers must use "module.function" form.'
+    raise ValueError(msg)
+
+
 def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any, Any], bool]:
     """
     Resolve a scorer name string to a callable.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from engram.models.config_snapshot import ConfigSnapshot
@@ -22,15 +22,6 @@ class Runner(ABC):
     @abstractmethod
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture the current config as a frozen snapshot."""
-
-    def estimate_cost(
-        self,
-        input_data: str,
-        impl_config: ImplementationConfig,
-        pricing: dict[str, Any],
-    ) -> float | None:
-        """Estimate cost for a single input. Returns None if not supported."""
-        return None
 
     def configure_pricing(self, overrides: dict[str, dict[str, float]]) -> None:
         """Optional hook: pre-load pricing data with project overrides applied. No-op by default."""

@@ -20,9 +20,13 @@ _RUNNERS: dict[str, type[Runner]] = {
 
 def get_runner(name: str) -> Runner:
     """Get a runner instance by name."""
-    runner_cls = _RUNNERS.get(name)
-    if runner_cls is None:
+    validate_runner_name(name)
+    return _RUNNERS[name]()
+
+
+def validate_runner_name(name: str) -> None:
+    """Raise ValueError if `name` is not a registered runner."""
+    if name not in _RUNNERS:
         available = ', '.join(sorted(_RUNNERS.keys()))
         msg = f'Unknown runner "{name}". Available: {available}'
         raise ValueError(msg)
-    return runner_cls()
