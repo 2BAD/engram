@@ -14,6 +14,10 @@ class FieldMetrics:
     f1: float = 0.0
     total: int = 0
     correct: int = 0
+    # True when precision/recall/F1 were computed per-class via macro averaging (enum
+    # field + exact_match scorer). False for numeric/fuzzy/custom fields, where those
+    # three values fall back to accuracy and display should render them as "—".
+    is_classification: bool = False
 
 
 @dataclass

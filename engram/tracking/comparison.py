@@ -34,6 +34,10 @@ class FieldDelta:
     recall_b: float = 0.0
     f1_a: float = 0.0
     f1_b: float = 0.0
+    # True if either side reported real per-class metrics. If both sides are
+    # non-classification, precision/recall/F1 values are fallback=accuracy and
+    # display should render them as "—".
+    is_classification: bool = False
 
     @property
     def accuracy_delta(self) -> float:
@@ -84,6 +88,7 @@ def compare_experiments(root: Path, id_a: str, id_b: str) -> ComparisonResult:
             recall_b=b.recall if b else 0.0,
             f1_a=a.f1 if a else 0.0,
             f1_b=b.f1 if b else 0.0,
+            is_classification=(a is not None and a.is_classification) or (b is not None and b.is_classification),
         )
 
     regressions = [name for name, delta in field_deltas.items() if delta.regressed]

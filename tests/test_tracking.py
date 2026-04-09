@@ -308,7 +308,36 @@ def test_compare_experiments(tmp_path: Path):
     assert result.experiment_b == id_b
     assert 'topic' in result.field_deltas
 
+    delta = result.field_deltas['topic']
     # A got topic right (A=A), B got it wrong (B!=A)
-    assert result.field_deltas['topic'].accuracy_a == 1.0
-    assert result.field_deltas['topic'].accuracy_b == 0.0
+    assert delta.accuracy_a == 1.0
+    assert delta.accuracy_b == 0.0
+    # F1 mirrors accuracy in this simple one-label-each case.
+    assert delta.f1_a == 1.0
+    assert delta.f1_b == 0.0
+    # enum + exact_match → flagged as classification in the delta so display renders real numbers.
+    assert delta.is_classification is True
     assert result.regressions == ['topic']
+
+
+def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram compare renders Accuracy, Precision, Recall, and F1 tables."""
+    from typer.testing import CliRunner  # noqa: PLC0415 — only needed for this CLI-level test
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'Accuracy Comparison' in result.output
+    assert 'Precision Comparison' in result.output
+    assert 'Recall Comparison' in result.output
+    assert 'F1 Comparison' in result.output
+    # Cost table still renders.
+    assert 'Cost Comparison' in result.output
+    # Regressions message still triggered (accuracy 1.0 → 0.0 and F1 1.0 → 0.0).
+    assert 'Regressions detected' in result.output
+    assert 'topic' in result.output

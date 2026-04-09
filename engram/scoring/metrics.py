@@ -31,6 +31,7 @@ def compute_field_metrics(
         f1=f1,
         total=total,
         correct=correct,
+        is_classification=is_classification and bool(pairs),
     )
 
 

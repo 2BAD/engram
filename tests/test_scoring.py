@@ -310,6 +310,81 @@ def test_score_experiment(tmp_path: Path):
     assert topic_metrics.precision == pytest.approx(2 / 3)
     assert topic_metrics.recall == pytest.approx(0.5)
     assert topic_metrics.f1 == pytest.approx(5 / 9)
+    # enum + exact_match → real per-class metrics.
+    assert topic_metrics.is_classification is True
 
     assert len(report.confusion_matrices) == 1
     assert report.cost_total_usd == pytest.approx(0.04)
+
+
+def test_score_experiment_non_classification_field(tmp_path: Path):
+    """A numeric field with numeric_tolerance scorer gets is_classification=False."""
+    (tmp_path / 'engram.yaml').write_text('name: test\n')
+
+    wf_dir = tmp_path / 'workflows' / 'measure'
+    wf_dir.mkdir(parents=True)
+    (wf_dir / 'workflow.yaml').write_text(
+        'name: measure\n'
+        'output:\n'
+        '  fields:\n'
+        '    score:\n'
+        '      type: number\n'
+        'scorers:\n'
+        '  score: numeric_tolerance(0.1)\n'
+    )
+
+    impl_dir = tmp_path / 'implementations' / 'measure-api'
+    impl_dir.mkdir(parents=True)
+    (impl_dir / 'implementation.yaml').write_text('workflow: measure\nplatform: api\nrunner: anthropic\n')
+
+    ds_dir = tmp_path / 'datasets' / 'test-ds'
+    ds_dir.mkdir(parents=True)
+    (ds_dir / 'dataset.yaml').write_text('name: test-ds\n')
+    (ds_dir / 'labels.json').write_text(json.dumps({'001.txt': {'score': 100}, '002.txt': {'score': 50}}))
+
+    experiment_id = 'measure-api_test-ds_20260404_120000'
+    exp_dir = tmp_path / 'experiments' / experiment_id
+    exp_dir.mkdir(parents=True)
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': experiment_id,
+                'implementation': 'measure-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+                'total': 2,
+                'succeeded': 2,
+                'failed': 0,
+                'results': [
+                    {
+                        'input_file': '001.txt',
+                        'output': {'score': 105},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                        'cost_usd': 0.0,
+                        'latency_ms': 100,
+                        'error': '',
+                    },
+                    {
+                        'input_file': '002.txt',
+                        'output': {'score': 60},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                        'cost_usd': 0.0,
+                        'latency_ms': 100,
+                        'error': '',
+                    },
+                ],
+            }
+        )
+    )
+
+    report = score_experiment(tmp_path, experiment_id)
+    score_metrics = report.field_metrics[0]
+    # 105 is within 10% of 100 (correct), 60 is not within 10% of 50 (off by 20%) → 1/2.
+    assert score_metrics.accuracy == pytest.approx(0.5)
+    # Non-classification: P/R/F1 fall back to accuracy, and the flag is False.
+    assert score_metrics.is_classification is False
+    assert score_metrics.precision == pytest.approx(0.5)
+    assert score_metrics.recall == pytest.approx(0.5)
+    assert score_metrics.f1 == pytest.approx(0.5)

@@ -15,7 +15,7 @@ console = Console()
 
 def print_eval_report(report: EvalReport) -> None:
     """Print a formatted evaluation report."""
-    _print_accuracy_table(report)
+    _print_metrics_table(report)
     _print_cost_table(report)
 
     for cm in report.confusion_matrices:
@@ -24,9 +24,10 @@ def print_eval_report(report: EvalReport) -> None:
 
 _THRESHOLD_GREEN = 0.8
 _THRESHOLD_YELLOW = 0.6
+_NA_CELL = '[dim]—[/dim]'
 
 
-def _accuracy_color(value: float) -> str:
+def _score_color(value: float) -> str:
     if value >= _THRESHOLD_GREEN:
         return 'green'
     if value >= _THRESHOLD_YELLOW:
@@ -34,21 +35,40 @@ def _accuracy_color(value: float) -> str:
     return 'red'
 
 
-def _print_accuracy_table(report: EvalReport) -> None:
-    table = Table(title='Accuracy')
+def _format_score(value: float) -> str:
+    color = _score_color(value)
+    return f'[{color}]{value:.1%}[/{color}]'
+
+
+def _print_metrics_table(report: EvalReport) -> None:
+    table = Table(title='Field Metrics')
     table.add_column('Field', style='bold')
     table.add_column('Accuracy', justify='right')
-    table.add_column('Correct', justify='right')
-    table.add_column('Total', justify='right')
+    table.add_column('Precision', justify='right')
+    table.add_column('Recall', justify='right')
+    table.add_column('F1', justify='right')
+    table.add_column('N', justify='right')
 
     for fm in report.field_metrics:
-        color = _accuracy_color(fm.accuracy)
-        table.add_row(
-            fm.field_name,
-            f'[{color}]{fm.accuracy:.1%}[/{color}]',
-            str(fm.correct),
-            str(fm.total),
-        )
+        if fm.is_classification:
+            row = [
+                fm.field_name,
+                _format_score(fm.accuracy),
+                _format_score(fm.precision),
+                _format_score(fm.recall),
+                _format_score(fm.f1),
+                str(fm.total),
+            ]
+        else:
+            row = [
+                fm.field_name,
+                _format_score(fm.accuracy),
+                _NA_CELL,
+                _NA_CELL,
+                _NA_CELL,
+                str(fm.total),
+            ]
+        table.add_row(*row)
 
     console.print(table)
     console.print()

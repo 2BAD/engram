@@ -8,9 +8,41 @@ from rich.table import Table
 
 from engram.config.discovery import find_project_root
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
-from engram.tracking.comparison import compare_experiments, diff_config_snapshots
+from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
 
 console = Console()
+
+_NA_CELL = '[dim]—[/dim]'
+
+
+def _print_metric_table(title: str, result: ComparisonResult, from_id: str, to_id: str, metric: str) -> None:
+    """Render one (Field, A, B, Δ) table for a single metric across all field deltas."""
+    table = Table(title=title)
+    table.add_column('Field', style='bold')
+    table.add_column(from_id, justify='right')
+    table.add_column(to_id, justify='right')
+    table.add_column('Delta', justify='right')
+
+    for delta in result.field_deltas.values():
+        # Accuracy is always meaningful; the other three require classification.
+        if metric != 'accuracy' and not delta.is_classification:
+            table.add_row(delta.field_name, _NA_CELL, _NA_CELL, _NA_CELL)
+            continue
+
+        a_val = getattr(delta, f'{metric}_a')
+        b_val = getattr(delta, f'{metric}_b')
+        delta_val = b_val - a_val
+        color = 'red' if delta_val < 0 else 'green'
+        sign = '+' if delta_val >= 0 else ''
+        table.add_row(
+            delta.field_name,
+            f'{a_val:.1%}',
+            f'{b_val:.1%}',
+            f'[{color}]{sign}{delta_val:.1%}[/{color}]',
+        )
+
+    console.print(table)
+    console.print()
 
 
 def compare_command(
@@ -56,25 +88,13 @@ def compare_command(
 
     result = compare_experiments(root, from_id, to_id)
 
-    # Accuracy table
-    table = Table(title='Accuracy Comparison')
-    table.add_column('Field', style='bold')
-    table.add_column(from_id, justify='right')
-    table.add_column(to_id, justify='right')
-    table.add_column('Delta', justify='right')
-
-    for delta in result.field_deltas.values():
-        color = 'red' if delta.regressed else 'green'
-        sign = '+' if delta.delta >= 0 else ''
-        table.add_row(
-            delta.field_name,
-            f'{delta.accuracy_a:.1%}',
-            f'{delta.accuracy_b:.1%}',
-            f'[{color}]{sign}{delta.delta:.1%}[/{color}]',
-        )
-
-    console.print(table)
-    console.print()
+    # Four stacked per-metric tables. Accuracy always shows real numbers; the other
+    # three render "—" for non-classification fields (where they fall back to accuracy
+    # and would be misleading to display as separate values).
+    _print_metric_table('Accuracy Comparison', result, from_id, to_id, metric='accuracy')
+    _print_metric_table('Precision Comparison', result, from_id, to_id, metric='precision')
+    _print_metric_table('Recall Comparison', result, from_id, to_id, metric='recall')
+    _print_metric_table('F1 Comparison', result, from_id, to_id, metric='f1')
 
     # Cost table
     cost_table = Table(title='Cost Comparison')
