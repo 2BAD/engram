@@ -28,10 +28,28 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     labels = load_dataset_labels(root, metadata['dataset'])
     resolved_scorers = {name: resolve_scorer(scorer, workflow_dir) for name, scorer in wf.scorers.items()}
 
-    field_scores, field_predictions, matched_examples = _collect_scores(results, labels, resolved_scorers, wf.confusion_matrices)
+    field_scores, field_predictions, matched_examples = _collect_scores(results, labels, resolved_scorers)
+
+    # A field gets per-class precision/recall/F1 only when the scorer is exact_match
+    # against an enum output — that's the regime where "class" is well-defined. Fuzzy,
+    # numeric, and custom scorers fall back to accuracy-based values.
+    classification_fields = {
+        name
+        for name, scorer_ref in wf.scorers.items()
+        if wf.output_fields.get(name) is not None
+        and wf.output_fields[name].type == 'enum'
+        and scorer_ref == 'exact_match'
+    }
 
     all_field_metrics = [
-        compute_field_metrics(name, scores) if scores else FieldMetrics(field_name=name)
+        compute_field_metrics(
+            name,
+            scores,
+            pairs=field_predictions.get(name, []),
+            is_classification=name in classification_fields,
+        )
+        if scores
+        else FieldMetrics(field_name=name)
         for name, scores in field_scores.items()
     ]
 
@@ -60,11 +78,10 @@ def _collect_scores(
     results: list[RunResult],
     labels: dict[str, dict[str, Any]],
     scorers: dict[str, Any],
-    cm_fields: list[str],
 ) -> tuple[dict[str, list[bool]], dict[str, list[tuple[str, str]]], int]:
-    """Score each result against its labels, collecting per-field scores and confusion matrix pairs."""
+    """Score each result and collect (expected, predicted) pairs for every scored field."""
     field_scores: dict[str, list[bool]] = {f: [] for f in scorers}
-    field_predictions: dict[str, list[tuple[str, str]]] = {f: [] for f in cm_fields}
+    field_predictions: dict[str, list[tuple[str, str]]] = {f: [] for f in scorers}
     matched_examples = 0
 
     for result in results:
@@ -95,5 +112,4 @@ def _score_single_result(
         if predicted is None:
             continue
         field_scores[field_name].append(scorer_fn(predicted, expected))
-        if field_name in field_predictions:
-            field_predictions[field_name].append((str(expected), str(predicted)))
+        field_predictions[field_name].append((str(expected), str(predicted)))

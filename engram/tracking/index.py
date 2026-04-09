@@ -28,6 +28,8 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         sum(fm.accuracy for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
     )
 
+    macro_f1 = sum(fm.f1 for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
+
     summary = {
         'id': report.experiment_id,
         'implementation': metadata['implementation'],
@@ -36,7 +38,11 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         'models': models,
         'matched_examples': report.matched_examples,
         'macro_accuracy': round(macro_accuracy, 4),
+        'macro_f1': round(macro_f1, 4),
         'field_accuracy': {fm.field_name: round(fm.accuracy, 4) for fm in report.field_metrics},
+        'field_precision': {fm.field_name: round(fm.precision, 4) for fm in report.field_metrics},
+        'field_recall': {fm.field_name: round(fm.recall, 4) for fm in report.field_metrics},
+        'field_f1': {fm.field_name: round(fm.f1, 4) for fm in report.field_metrics},
         'cost': {
             'total_usd': round(report.cost_total_usd, 4),
             'avg_usd': round(report.cost_avg_usd, 4),

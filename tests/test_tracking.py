@@ -106,7 +106,17 @@ def test_append_and_read_index(tmp_path: Path):
 
     report = EvalReport(
         experiment_id=exp_id,
-        field_metrics=[FieldMetrics(field_name='topic', accuracy=0.95, total=100, correct=95)],
+        field_metrics=[
+            FieldMetrics(
+                field_name='topic',
+                accuracy=0.95,
+                precision=0.92,
+                recall=0.9,
+                f1=0.91,
+                total=100,
+                correct=95,
+            )
+        ],
         cost_total_usd=1.23,
         cost_avg_usd=0.0123,
     )
@@ -115,9 +125,15 @@ def test_append_and_read_index(tmp_path: Path):
 
     entries = read_index(tmp_path)
     assert len(entries) == 1
-    assert entries[0]['id'] == exp_id
-    assert entries[0]['macro_accuracy'] == 0.95
-    assert entries[0]['models'] == ['claude-sonnet']
+    entry = entries[0]
+    assert entry['id'] == exp_id
+    assert entry['macro_accuracy'] == 0.95
+    assert entry['macro_f1'] == 0.91
+    assert entry['field_accuracy'] == {'topic': 0.95}
+    assert entry['field_precision'] == {'topic': 0.92}
+    assert entry['field_recall'] == {'topic': 0.9}
+    assert entry['field_f1'] == {'topic': 0.91}
+    assert entry['models'] == ['claude-sonnet']
 
 
 def test_read_index_empty(tmp_path: Path):
@@ -213,13 +229,48 @@ def test_index_omits_avg_output_tokens_when_no_data(tmp_path: Path):
 
 
 def test_field_delta():
-    delta = FieldDelta(field_name='topic', accuracy_a=0.8, accuracy_b=0.9)
-    assert delta.delta == pytest.approx(0.1)
+    # Regression is gated on F1, not accuracy. Compute all four deltas independently.
+    delta = FieldDelta(
+        field_name='topic',
+        accuracy_a=0.8,
+        accuracy_b=0.9,
+        precision_a=0.75,
+        precision_b=0.85,
+        recall_a=0.8,
+        recall_b=0.9,
+        f1_a=0.77,
+        f1_b=0.87,
+    )
+    assert delta.accuracy_delta == pytest.approx(0.1)
+    assert delta.precision_delta == pytest.approx(0.1)
+    assert delta.recall_delta == pytest.approx(0.1)
+    assert delta.f1_delta == pytest.approx(0.1)
+    assert delta.delta == pytest.approx(0.1)  # delta aliases f1_delta
     assert not delta.regressed
 
-    delta_down = FieldDelta(field_name='sentiment', accuracy_a=0.9, accuracy_b=0.7)
-    assert delta_down.delta == pytest.approx(-0.2)
+    delta_down = FieldDelta(
+        field_name='sentiment',
+        accuracy_a=0.9,
+        accuracy_b=0.7,
+        f1_a=0.88,
+        f1_b=0.65,
+    )
+    assert delta_down.f1_delta == pytest.approx(-0.23)
     assert delta_down.regressed
+
+
+def test_field_delta_accuracy_up_but_f1_down_is_regression():
+    """A run where accuracy rises but F1 drops (class imbalance shift) counts as a regression."""
+    delta = FieldDelta(
+        field_name='topic',
+        accuracy_a=0.7,
+        accuracy_b=0.75,  # accuracy up
+        f1_a=0.65,
+        f1_b=0.5,  # but F1 down — rare classes got worse
+    )
+    assert delta.accuracy_delta > 0
+    assert delta.f1_delta < 0
+    assert delta.regressed  # gated on F1
 
 
 # --- Config diff ---

@@ -83,11 +83,15 @@ def test_resolve_custom_scorer(tmp_path: Path):
 # --- Metrics ---
 
 
-def test_compute_field_metrics():
+def test_compute_field_metrics_non_classification():
+    """Without is_classification=True, P/R/F1 fall back to the accuracy value."""
     scores = [True, True, True, False, True]
     metrics = compute_field_metrics('topic', scores)
     assert metrics.field_name == 'topic'
     assert metrics.accuracy == 0.8
+    assert metrics.precision == 0.8
+    assert metrics.recall == 0.8
+    assert metrics.f1 == 0.8
     assert metrics.total == 5
     assert metrics.correct == 4
 
@@ -96,6 +100,79 @@ def test_compute_field_metrics_empty():
     metrics = compute_field_metrics('topic', [])
     assert metrics.accuracy == 0.0
     assert metrics.total == 0
+
+
+def test_compute_field_metrics_classification_perfect():
+    """All-correct multi-class: every macro metric is 1.0."""
+    scores = [True] * 5
+    pairs = [('A', 'A'), ('A', 'A'), ('B', 'B'), ('B', 'B'), ('C', 'C')]
+    metrics = compute_field_metrics('topic', scores, pairs=pairs, is_classification=True)
+    assert metrics.accuracy == 1.0
+    assert metrics.precision == pytest.approx(1.0)
+    assert metrics.recall == pytest.approx(1.0)
+    assert metrics.f1 == pytest.approx(1.0)
+
+
+def test_compute_field_metrics_classification_all_wrong():
+    """All-wrong 2-class: accuracy is 0, and because no class has any TP, macro P/R/F1 are 0."""
+    scores = [False, False, False, False]
+    pairs = [('A', 'B'), ('A', 'B'), ('B', 'A'), ('B', 'A')]
+    metrics = compute_field_metrics('topic', scores, pairs=pairs, is_classification=True)
+    assert metrics.accuracy == 0.0
+    assert metrics.precision == 0.0
+    assert metrics.recall == 0.0
+    assert metrics.f1 == 0.0
+
+
+def test_compute_field_metrics_classification_symmetric_confusion():
+    """3-class symmetric confusion. Hand-calculated expectations from comments."""
+    # Class A: expected 2 (A,A and A,B), predicted 2 (A,A and B,A)
+    #   TP=1 (A,A), FP=1 (B,A), FN=1 (A,B) → P=R=0.5, F1=0.5
+    # Class B: expected 2 (B,B and B,A), predicted 2 (A,B and B,B)
+    #   TP=1 (B,B), FP=1 (A,B), FN=1 (B,A) → P=R=0.5, F1=0.5
+    # Class C: expected 1, predicted 1, both C → P=R=F1=1.0
+    # Macro: (0.5 + 0.5 + 1.0) / 3 = 0.666...
+    scores = [True, False, True, False, True]
+    pairs = [('A', 'A'), ('A', 'B'), ('B', 'B'), ('B', 'A'), ('C', 'C')]
+    metrics = compute_field_metrics('topic', scores, pairs=pairs, is_classification=True)
+    assert metrics.accuracy == pytest.approx(3 / 5)
+    assert metrics.precision == pytest.approx(2 / 3)
+    assert metrics.recall == pytest.approx(2 / 3)
+    assert metrics.f1 == pytest.approx(2 / 3)
+
+
+def test_compute_field_metrics_classification_hallucinated_class():
+    """A class predicted but never expected (C) has P=R=F1=0 and drags down the macro average."""
+    # Class A: expected 2 (A,A and A,C), predicted 1 (A,A)
+    #   TP=1, FP=0, FN=1 → P=1.0, R=0.5, F1=2*1*0.5/1.5 = 0.6666...
+    # Class B: expected 1, predicted 1 → P=R=F1=1.0
+    # Class C: expected 0, predicted 1 → TP=0, FP=1, FN=0 → P=0 (0/1), R=0 (0/0 → 0), F1=0
+    # Macro P: (1 + 1 + 0) / 3 = 0.6666...
+    # Macro R: (0.5 + 1 + 0) / 3 = 0.5
+    # Macro F1: (0.6666... + 1 + 0) / 3 = 0.5555...
+    scores = [True, False, True]
+    pairs = [('A', 'A'), ('A', 'C'), ('B', 'B')]
+    metrics = compute_field_metrics('topic', scores, pairs=pairs, is_classification=True)
+    assert metrics.accuracy == pytest.approx(2 / 3)
+    assert metrics.precision == pytest.approx(2 / 3)
+    assert metrics.recall == pytest.approx(0.5)
+    assert metrics.f1 == pytest.approx((2 / 3 + 1 + 0) / 3)
+
+
+def test_compute_field_metrics_classification_imbalanced():
+    """2-class imbalanced: majority class gets most predictions, minority class suffers."""
+    # 5 pairs: [(A,A), (A,A), (A,A), (A,B), (B,A)]
+    # Class A: expected 4, predicted 4 — TP=3, FP=1 (B,A), FN=1 (A,B) → P=R=0.75, F1=0.75
+    # Class B: expected 1, predicted 1 — TP=0, FP=1 (A,B), FN=1 (B,A) → P=0, R=0, F1=0
+    # Macro: P=R=F1=(0.75+0)/2=0.375
+    # But accuracy is 3/5=0.6 — the gap between accuracy and macro F1 IS the point of macro.
+    scores = [True, True, True, False, False]
+    pairs = [('A', 'A'), ('A', 'A'), ('A', 'A'), ('A', 'B'), ('B', 'A')]
+    metrics = compute_field_metrics('topic', scores, pairs=pairs, is_classification=True)
+    assert metrics.accuracy == pytest.approx(0.6)
+    assert metrics.precision == pytest.approx(0.375)
+    assert metrics.recall == pytest.approx(0.375)
+    assert metrics.f1 == pytest.approx(0.375)
 
 
 def test_compute_confusion_matrix():
@@ -221,6 +298,18 @@ def test_score_experiment(tmp_path: Path):
     assert topic_metrics.total == 3
     assert topic_metrics.correct == 2  # 001=A(correct), 002=B(correct), 003=C(wrong, expected A)
     assert topic_metrics.accuracy == pytest.approx(2 / 3)
+
+    # Workflow uses enum + exact_match so per-class F1 is computed. Pairs are:
+    #   [(A,A), (B,B), (A,C)]
+    # Class A: TP=1, FP=0, FN=1 → P=1, R=0.5, F1=2*1*0.5/1.5 = 2/3
+    # Class B: TP=1, FP=0, FN=0 → P=R=F1=1
+    # Class C: expected 0, predicted 1 → TP=0, FP=1, FN=0 → P=R=F1=0
+    # Macro P: (1+1+0)/3 = 2/3
+    # Macro R: (0.5+1+0)/3 = 0.5
+    # Macro F1: (2/3 + 1 + 0)/3 = 5/9 ≈ 0.556
+    assert topic_metrics.precision == pytest.approx(2 / 3)
+    assert topic_metrics.recall == pytest.approx(0.5)
+    assert topic_metrics.f1 == pytest.approx(5 / 9)
 
     assert len(report.confusion_matrices) == 1
     assert report.cost_total_usd == pytest.approx(0.04)

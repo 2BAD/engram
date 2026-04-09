@@ -23,19 +23,42 @@ class ComparisonResult:
 
 @dataclass
 class FieldDelta:
-    """Accuracy delta for a single field."""
+    """Per-field metric deltas across two experiments. Regression is gated on F1, not accuracy."""
 
     field_name: str
     accuracy_a: float
     accuracy_b: float
+    precision_a: float = 0.0
+    precision_b: float = 0.0
+    recall_a: float = 0.0
+    recall_b: float = 0.0
+    f1_a: float = 0.0
+    f1_b: float = 0.0
 
     @property
-    def delta(self) -> float:
+    def accuracy_delta(self) -> float:
         return self.accuracy_b - self.accuracy_a
 
     @property
+    def precision_delta(self) -> float:
+        return self.precision_b - self.precision_a
+
+    @property
+    def recall_delta(self) -> float:
+        return self.recall_b - self.recall_a
+
+    @property
+    def f1_delta(self) -> float:
+        return self.f1_b - self.f1_a
+
+    @property
+    def delta(self) -> float:
+        """Primary metric delta used for regression detection (F1)."""
+        return self.f1_delta
+
+    @property
     def regressed(self) -> bool:
-        return self.delta < 0
+        return self.f1_delta < 0
 
 
 def compare_experiments(root: Path, id_a: str, id_b: str) -> ComparisonResult:
@@ -49,9 +72,19 @@ def compare_experiments(root: Path, id_a: str, id_b: str) -> ComparisonResult:
 
     all_fields = sorted(set(metrics_a.keys()) | set(metrics_b.keys()))
     for field_name in all_fields:
-        acc_a = metrics_a[field_name].accuracy if field_name in metrics_a else 0.0
-        acc_b = metrics_b[field_name].accuracy if field_name in metrics_b else 0.0
-        field_deltas[field_name] = FieldDelta(field_name=field_name, accuracy_a=acc_a, accuracy_b=acc_b)
+        a = metrics_a.get(field_name)
+        b = metrics_b.get(field_name)
+        field_deltas[field_name] = FieldDelta(
+            field_name=field_name,
+            accuracy_a=a.accuracy if a else 0.0,
+            accuracy_b=b.accuracy if b else 0.0,
+            precision_a=a.precision if a else 0.0,
+            precision_b=b.precision if b else 0.0,
+            recall_a=a.recall if a else 0.0,
+            recall_b=b.recall if b else 0.0,
+            f1_a=a.f1 if a else 0.0,
+            f1_b=b.f1 if b else 0.0,
+        )
 
     regressions = [name for name, delta in field_deltas.items() if delta.regressed]
 
