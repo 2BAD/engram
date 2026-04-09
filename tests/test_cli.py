@@ -43,7 +43,7 @@ def test_init_creates_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert (tmp_path / 'datasets' / 'sample' / 'labels.json').exists()
 
     # Quickstart instructions are printed
-    assert 'engram eval classify-api sample' in result.output
+    assert 'engram eval classify-api --dataset sample' in result.output
 
 
 def test_init_project_passes_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

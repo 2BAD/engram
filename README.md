@@ -14,15 +14,21 @@ uv add engram
 
 ## Quick start
 
+`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), an Anthropic API implementation (`classify-api`), and a tiny labeled dataset (`sample`) so the full loop works end-to-end out of the box.
+
 ```sh
-engram init
-engram eval <implementation> --dataset <dataset>
-engram score <experiment-id> --save
-engram baseline set <experiment-id>
-engram compare <experiment-id> --prompts
-engram baseline promote <experiment-id>
-engram estimate <implementation> --dataset <dataset>
+engram init                                            # scaffold project + classify example
+export ANTHROPIC_API_KEY=sk-ant-...
+engram status                                          # verify workflow, impl, and dataset loaded
+engram estimate classify-api --dataset sample          # preview cost
+engram eval classify-api --dataset sample              # run the workflow
+engram score <experiment-id> --save                    # compute metrics and append to the index
+engram baseline set <experiment-id>                    # mark as the workflow baseline
+engram compare <experiment-id> --prompts               # diff against the baseline
+engram baseline promote <experiment-id>                # promote as the implementation reference
 ```
+
+Swap `classify-api` and `sample` for your own names once you replace the example.
 
 ## Development
 

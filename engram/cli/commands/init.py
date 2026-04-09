@@ -128,5 +128,5 @@ def init_command() -> None:
     console.print('[bold]Next steps:[/bold]')
     console.print('  1. Set your API key: [cyan]export ANTHROPIC_API_KEY=sk-ant-...[/cyan]')
     console.print('  2. Verify the setup:  [cyan]engram status[/cyan]')
-    console.print('  3. Preview cost:      [cyan]engram estimate classify-api sample[/cyan]')
-    console.print('  4. Run the workflow:  [cyan]engram eval classify-api sample[/cyan]')
+    console.print('  3. Preview cost:      [cyan]engram estimate classify-api --dataset sample[/cyan]')
+    console.print('  4. Run the workflow:  [cyan]engram eval classify-api --dataset sample[/cyan]')
