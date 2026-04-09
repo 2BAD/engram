@@ -42,13 +42,25 @@ confusion_matrices:
   - topic
 """
 
-_IMPLEMENTATION_YAML = """\
+_ANTHROPIC_IMPL_YAML = """\
 workflow: classify
 platform: api
 runner: anthropic
 runner_config:
   api_key_env: ANTHROPIC_API_KEY
   model: claude-sonnet-4-5-20250514
+  max_tokens: "1024"
+config_management:
+  mode: local
+"""
+
+_OPENAI_IMPL_YAML = """\
+workflow: classify
+platform: api
+runner: openai
+runner_config:
+  api_key_env: OPENAI_API_KEY
+  model: gpt-5.4-nano
   max_tokens: "1024"
 config_management:
   mode: local
@@ -100,8 +112,13 @@ _TEMPLATES: dict[str, str] = {
     '.gitignore': _GITIGNORE,
     'experiments/.gitignore': _EXPERIMENTS_GITIGNORE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
-    'implementations/classify-api/implementation.yaml': _IMPLEMENTATION_YAML,
-    'implementations/classify-api/prompts/system.md': _SYSTEM_PROMPT,
+    # Two implementations of the same workflow so the project is ready for a
+    # cross-platform comparison out of the box. Prompts are identical in both
+    # so users can diverge them independently once they start iterating.
+    'implementations/classify-anthropic/implementation.yaml': _ANTHROPIC_IMPL_YAML,
+    'implementations/classify-anthropic/prompts/system.md': _SYSTEM_PROMPT,
+    'implementations/classify-openai/implementation.yaml': _OPENAI_IMPL_YAML,
+    'implementations/classify-openai/prompts/system.md': _SYSTEM_PROMPT,
     'datasets/sample/dataset.yaml': _DATASET_YAML,
     'datasets/sample/inputs/001.txt': _INPUT_001,
     'datasets/sample/inputs/002.txt': _INPUT_002,
@@ -124,9 +141,17 @@ def init_command() -> None:
         path.write_text(content)
 
     console.print('[green]Initialized engram project with the classify example.[/green]')
+    console.print('Two implementations of the same workflow are scaffolded so you can compare platforms:')
+    console.print('  [bold]classify-anthropic[/bold]  — Anthropic Messages API')
+    console.print('  [bold]classify-openai[/bold]     — OpenAI Chat Completions API')
     console.print()
     console.print('[bold]Next steps:[/bold]')
-    console.print('  1. Set your API key: [cyan]export ANTHROPIC_API_KEY=sk-ant-...[/cyan]')
+    console.print('  1. Set at least one API key:')
+    console.print('       [cyan]export ANTHROPIC_API_KEY=sk-ant-...[/cyan]')
+    console.print('       [cyan]export OPENAI_API_KEY=sk-...[/cyan]')
     console.print('  2. Verify the setup:  [cyan]engram status[/cyan]')
-    console.print('  3. Preview cost:      [cyan]engram estimate classify-api --dataset sample[/cyan]')
-    console.print('  4. Run the workflow:  [cyan]engram eval classify-api --dataset sample[/cyan]')
+    console.print('  3. Run both evals:')
+    console.print('       [cyan]engram eval classify-anthropic --dataset sample[/cyan]')
+    console.print('       [cyan]engram eval classify-openai --dataset sample[/cyan]')
+    console.print('  4. Score each run:    [cyan]engram score <experiment-id> --save[/cyan]')
+    console.print('  5. Compare platforms: [cyan]engram compare <id-a> <id-b>[/cyan]')

@@ -32,18 +32,24 @@ def test_init_creates_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert (tmp_path / 'datasets').is_dir()
     assert (tmp_path / 'experiments' / '.gitignore').exists()
 
-    # Example workflow, implementation, and dataset
+    # Shared workflow and dataset
     assert (tmp_path / 'workflows' / 'classify' / 'workflow.yaml').exists()
-    assert (tmp_path / 'implementations' / 'classify-api' / 'implementation.yaml').exists()
-    assert (tmp_path / 'implementations' / 'classify-api' / 'prompts' / 'system.md').exists()
     assert (tmp_path / 'datasets' / 'sample' / 'dataset.yaml').exists()
     assert (tmp_path / 'datasets' / 'sample' / 'inputs' / '001.txt').exists()
     assert (tmp_path / 'datasets' / 'sample' / 'inputs' / '002.txt').exists()
     assert (tmp_path / 'datasets' / 'sample' / 'inputs' / '003.txt').exists()
     assert (tmp_path / 'datasets' / 'sample' / 'labels.json').exists()
 
-    # Quickstart instructions are printed
-    assert 'engram eval classify-api --dataset sample' in result.output
+    # Both implementations scaffolded so the compare flow is runnable out of the box
+    assert (tmp_path / 'implementations' / 'classify-anthropic' / 'implementation.yaml').exists()
+    assert (tmp_path / 'implementations' / 'classify-anthropic' / 'prompts' / 'system.md').exists()
+    assert (tmp_path / 'implementations' / 'classify-openai' / 'implementation.yaml').exists()
+    assert (tmp_path / 'implementations' / 'classify-openai' / 'prompts' / 'system.md').exists()
+
+    # Quickstart instructions mention both implementations and the compare step
+    assert 'engram eval classify-anthropic --dataset sample' in result.output
+    assert 'engram eval classify-openai --dataset sample' in result.output
+    assert 'engram compare' in result.output
 
 
 def test_init_project_passes_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

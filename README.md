@@ -14,47 +14,30 @@ uv add engram
 
 ## Quick start
 
-`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), an Anthropic API implementation (`classify-api`), and a tiny labeled dataset (`sample`) so the full loop works end-to-end out of the box.
+`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations of the same workflow (`classify-anthropic` and `classify-openai`) so you can compare platforms immediately, and a tiny labeled `sample` dataset.
 
 ```sh
-engram init                                            # scaffold project + classify example
+engram init                                                     # scaffold project + two implementations + sample dataset
 export ANTHROPIC_API_KEY=sk-ant-...
-engram status                                          # verify workflow, impl, and dataset loaded
-engram estimate classify-api --dataset sample          # preview cost
-engram eval classify-api --dataset sample              # run the workflow
-engram score <experiment-id> --save                    # compute metrics and append to the index
-engram baseline set <experiment-id>                    # mark as the workflow baseline
-engram compare <experiment-id> --prompts               # diff against the baseline
-engram baseline promote <experiment-id>                # promote as the implementation reference
+export OPENAI_API_KEY=sk-...
+engram status                                                   # verify both impls load cleanly
+engram eval classify-anthropic --dataset sample                 # run against Anthropic
+engram eval classify-openai --dataset sample                    # run against OpenAI
+engram score <anthropic-experiment-id> --save                   # compute metrics for each
+engram score <openai-experiment-id> --save
+engram compare <anthropic-experiment-id> <openai-experiment-id> # accuracy, precision, recall, F1 and cost side by side
 ```
 
-Swap `classify-api` and `sample` for your own names once you replace the example.
+Rename the implementations and dataset once you replace the example with your own workflow.
 
 ## Supported runners
 
-| Runner           | Platform             | Notes                                                               |
-| ---------------- | -------------------- | ------------------------------------------------------------------- |
-| `anthropic`      | Anthropic Messages API | Direct API calls; JSON parsed from prompt-controlled output.     |
-| `anthropic-agent`| Local Python agent   | Runs a user-supplied `entry_point` function; usage/cost returned by the agent. |
-| `openai`         | OpenAI Chat Completions API | JSON mode (`response_format={"type": "json_object"}`) for reliable output. |
-| `dynamiq`        | Dynamiq hosted platform | HTTP trigger with platform-reported cost from trace data.        |
-
-To use the OpenAI runner, write an implementation like:
-
-```yaml
-# implementations/classify-openai/implementation.yaml
-workflow: classify
-platform: api
-runner: openai
-runner_config:
-  api_key_env: OPENAI_API_KEY
-  model: gpt-5.4-nano
-  max_tokens: "1024"
-config_management:
-  mode: local
-```
-
-Then `export OPENAI_API_KEY=...` and run `engram eval classify-openai --dataset sample` to evaluate the same workflow against OpenAI. Compare runs across runners with `engram compare`.
+| Runner            | Platform                    | Notes                                                                          |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `anthropic`       | Anthropic Messages API      | Direct API calls; JSON parsed from prompt-controlled output.                   |
+| `anthropic-agent` | Local Python agent          | Runs a user-supplied `entry_point` function; usage/cost returned by the agent. |
+| `openai`          | OpenAI Chat Completions API | JSON mode (`response_format={"type": "json_object"}`) for reliable output.     |
+| `dynamiq`         | Dynamiq hosted platform     | HTTP trigger with platform-reported cost from trace data.                      |
 
 ## Development
 
