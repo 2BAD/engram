@@ -10,6 +10,7 @@ import pytest
 from engram.models.implementation import ConfigManagement, ImplementationConfig
 from engram.runners.anthropic_agent import AnthropicAgentRunner
 from engram.runners.anthropic_api import AnthropicApiRunner, _parse_json_output
+from engram.runners.errors import MissingAPIKeyError
 from engram.runners.openai_api import OpenAIApiRunner
 from engram.runners.registry import get_runner
 
@@ -307,6 +308,28 @@ def test_api_runner_configure_pricing_overrides_rates(tmp_path: Path):
     assert result.cost_usd == pytest.approx(0.0021)
 
 
+def test_api_runner_required_env_vars():
+    """AnthropicApiRunner reports its api_key_env as required."""
+    impl_config = _make_impl_config()
+    assert AnthropicApiRunner().required_env_vars(impl_config) == ['ANTHROPIC_API_KEY']
+
+
+def test_api_runner_missing_key_raises_friendly_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When ANTHROPIC_API_KEY is unset, trigger raises MissingAPIKeyError (not KeyError)."""
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+    with pytest.raises(MissingAPIKeyError) as excinfo:
+        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert excinfo.value.env_var == 'ANTHROPIC_API_KEY'
+    assert 'ANTHROPIC_API_KEY' in str(excinfo.value)
+
+
 def test_api_runner_snapshot(tmp_path: Path):
     prompts_dir = tmp_path / 'prompts'
     prompts_dir.mkdir()
@@ -586,6 +609,25 @@ def test_openai_runner_trigger_empty_content(tmp_path: Path):
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
     assert result.cost_usd == pytest.approx(0.00003)
+
+
+def test_openai_runner_required_env_vars():
+    impl_config = _make_openai_impl_config()
+    assert OpenAIApiRunner().required_env_vars(impl_config) == ['OPENAI_API_KEY']
+
+
+def test_openai_runner_missing_key_raises_friendly_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config()
+    with pytest.raises(MissingAPIKeyError) as excinfo:
+        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+
+    assert excinfo.value.env_var == 'OPENAI_API_KEY'
 
 
 def test_openai_runner_snapshot(tmp_path: Path):

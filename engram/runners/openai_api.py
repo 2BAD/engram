@@ -15,6 +15,7 @@ from engram.cost.pricing import find_rate, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
+from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
@@ -30,10 +31,18 @@ class OpenAIApiRunner(Runner):
         """Eager-load the pricing table with project overrides applied."""
         self._pricing = load_pricing(overrides=overrides)
 
+    def required_env_vars(self, impl_config: ImplementationConfig) -> list[str]:
+        key = impl_config.runner_config.get('api_key_env')
+        return [key] if key else []
+
     def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Send input to the OpenAI API in JSON mode and parse the response."""
         rc = impl_config.runner_config
-        api_key = os.environ[rc['api_key_env']]
+        env_var = rc['api_key_env']
+        try:
+            api_key = os.environ[env_var]
+        except KeyError as e:
+            raise MissingAPIKeyError(env_var) from e
         model = rc['model']
         max_tokens = int(rc.get('max_tokens', '4096'))
 

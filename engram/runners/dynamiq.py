@@ -20,6 +20,7 @@ from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
 from engram.runners.dynamiq_api import get_trace, management_api
+from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
@@ -41,6 +42,17 @@ class DynamiqRunner(Runner):
         self._cache_dir: Path | None = None
         self._initialized = False
 
+    def required_env_vars(self, impl_config: ImplementationConfig) -> list[str]:
+        rc = impl_config.runner_config
+        keys: list[str] = []
+        access_key = rc.get('access_key_env')
+        if access_key:
+            keys.append(access_key)
+        jwt_env = impl_config.config_management.jwt_env
+        if jwt_env:
+            keys.append(jwt_env)
+        return keys
+
     def _ensure_initialized(self, impl_config: ImplementationConfig, impl_dir: Path) -> str | None:
         """Resolve hostname on first call, return error string or None."""
         if self._initialized:
@@ -48,7 +60,11 @@ class DynamiqRunner(Runner):
 
         rc = impl_config.runner_config
         self._app_id = rc['app_id']
-        self._access_key = os.environ[rc['access_key_env']]
+        env_var = rc['access_key_env']
+        try:
+            self._access_key = os.environ[env_var]
+        except KeyError as e:
+            raise MissingAPIKeyError(env_var) from e
         self._jwt_env = impl_config.config_management.jwt_env
         self._cache_dir = impl_dir.parent.parent / 'data' / 'cache'
 

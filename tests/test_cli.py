@@ -123,6 +123,26 @@ def test_cli_outside_project_does_not_crash_without_dotenv(tmp_path: Path, monke
     assert result.exit_code == 0
 
 
+def test_eval_command_preflight_rejects_missing_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram eval fails fast with a friendly message when the runner's API key env var is missing."""
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    # Scaffold a project via init so we have a valid implementation to point at.
+    init_result = runner.invoke(app, ['init'])
+    assert init_result.exit_code == 0
+
+    # No .env file and no exported key → preflight should catch it before any API call.
+    result = runner.invoke(app, ['eval', 'classify-anthropic', '--dataset', 'sample'])
+
+    assert result.exit_code == 1
+    assert 'ANTHROPIC_API_KEY' in result.output
+    assert 'Missing required environment variable' in result.output
+    # The error message tells the user where to put the key.
+    assert '.env' in result.output
+    assert 'export ANTHROPIC_API_KEY' in result.output
+
+
 def test_status_no_project(tmp_path: Path):
     os.chdir(tmp_path)
     result = runner.invoke(app, ['status'])

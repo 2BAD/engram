@@ -26,3 +26,8 @@ class Runner(ABC):
     def configure_pricing(self, overrides: dict[str, dict[str, float]]) -> None:
         """Optional hook: pre-load pricing data with project overrides applied. No-op by default."""
         return
+
+    def required_env_vars(self, impl_config: ImplementationConfig) -> list[str]:
+        """Env vars this runner needs set for the given implementation; empty by default."""
+        _ = impl_config
+        return []
