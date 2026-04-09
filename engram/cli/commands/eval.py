@@ -48,3 +48,7 @@ def eval_command(
 
     experiment_id = run_eval(root, implementation, dataset, concurrency, limit=limit, seed=seed)
     console.print(f'[green]Experiment complete:[/green] {experiment_id}')
+    console.print()
+    console.print('[bold]Next steps:[/bold]')
+    console.print(f'  Score the run:   [cyan]engram score {experiment_id} --save[/cyan]')
+    console.print('  List past runs:  [cyan]engram experiments list[/cyan]')

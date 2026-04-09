@@ -123,6 +123,29 @@ def test_cli_outside_project_does_not_crash_without_dotenv(tmp_path: Path, monke
     assert result.exit_code == 0
 
 
+def test_eval_command_prints_next_step_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """After a successful eval, the command prints the experiment ID and the exact next command."""
+    monkeypatch.chdir(tmp_path)
+
+    # Scaffold a real project, satisfy the preflight, then stub run_eval.
+    init_result = runner.invoke(app, ['init'])
+    assert init_result.exit_code == 0
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
+    monkeypatch.setattr(
+        'engram.cli.commands.eval.run_eval',
+        lambda *_args, **_kwargs: 'classify-anthropic_sample_fake-id',
+    )
+
+    result = runner.invoke(app, ['eval', 'classify-anthropic', '--dataset', 'sample'])
+
+    assert result.exit_code == 0
+    assert 'Experiment complete' in result.output
+    assert 'classify-anthropic_sample_fake-id' in result.output
+    # Hint block names both the score command (with the exact ID) and the list command.
+    assert 'engram score classify-anthropic_sample_fake-id --save' in result.output
+    assert 'engram experiments list' in result.output
+
+
 def test_eval_command_preflight_rejects_missing_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """engram eval fails fast with a friendly message when the runner's API key env var is missing."""
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
