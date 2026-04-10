@@ -7,23 +7,8 @@ import pytest
 from typer.testing import CliRunner
 
 from engram.cli import app
-from engram.observability.output_mode import OutputMode
 
 runner = CliRunner()
-
-
-@pytest.fixture
-def rich_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force Rich output mode with a wide enough virtual terminal for assertions."""
-
-    # CliRunner captures stdout, so sys.stdout.isatty() returns False and
-    # OutputMode.detect() picks JSON by default. Override detect, and set COLUMNS
-    # so Rich stops truncating cells to the 80-char fallback.
-    def _detect(force_json: bool = False) -> OutputMode:  # noqa: ARG001 — match detect signature
-        return OutputMode(use_rich=True, use_json_logging=False)
-
-    monkeypatch.setattr('engram.observability.output_mode.OutputMode.detect', _detect)
-    monkeypatch.setenv('COLUMNS', '200')
 
 
 def _seed_index(root: Path, entries: list[dict]) -> None:

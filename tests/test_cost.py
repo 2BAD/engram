@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from typer.testing import CliRunner
+
+from engram.cli import app
 from engram.cost.estimator import _rough_token_count, estimate_cost
 from engram.cost.pricing import _apply_overrides, find_rate
 
@@ -177,3 +181,29 @@ def test_estimate_uses_historical_calibration(tmp_path: Path):
 
     assert result['avg_output_tokens'] == 200
     assert result['examples'][0]['estimated_output_tokens'] == 200
+
+
+def test_estimate_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """With --json, estimate emits the full structured cost breakdown."""
+    _setup_estimator_project(tmp_path)
+
+    fake_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+        }
+    }
+    monkeypatch.chdir(tmp_path)
+
+    with patch('engram.cost.estimator.load_pricing', return_value=fake_pricing):
+        result = CliRunner().invoke(app, ['--json', 'estimate', 'classify-api', '--dataset', 'test-ds'])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload['implementation'] == 'classify-api'
+    assert payload['dataset'] == 'test-ds'
+    assert payload['model'] == 'claude-sonnet-4-5-20250514'
+    assert payload['total_examples'] == 2
+    assert payload['total_estimated_cost_usd'] > 0
+    assert 'examples' in payload
+    assert len(payload['examples']) == 2

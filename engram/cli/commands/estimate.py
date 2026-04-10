@@ -1,5 +1,6 @@
 """Estimate command: estimate cost before running."""
 
+import json
 from typing import Annotated
 
 import typer
@@ -8,6 +9,7 @@ from rich.table import Table
 
 from engram.config.discovery import find_project_root
 from engram.cost.estimator import estimate_cost
+from engram.observability.output_mode import get_output_mode
 
 console = Console()
 
@@ -23,6 +25,10 @@ def estimate_command(
         raise typer.Exit(1)
 
     result = estimate_cost(root, implementation, dataset)
+
+    if not get_output_mode().use_rich:
+        print(json.dumps(result, indent=2))
+        return
 
     console.print(f'[bold]Cost Estimate:[/bold] {result["implementation"]} / {result["dataset"]}')
     console.print(f'  Model: {result["model"]}')

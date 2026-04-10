@@ -320,6 +320,7 @@ def test_compare_experiments(tmp_path: Path):
     assert result.regressions == ['topic']
 
 
+@pytest.mark.usefixtures('rich_mode')
 def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """engram compare renders Accuracy, Precision, Recall, and F1 tables."""
     from typer.testing import CliRunner  # noqa: PLC0415 — only needed for this CLI-level test
@@ -341,3 +342,27 @@ def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypat
     # Regressions message still triggered (accuracy 1.0 → 0.0 and F1 1.0 → 0.0).
     assert 'Regressions detected' in result.output
     assert 'topic' in result.output
+
+
+def test_compare_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """With --json, compare emits a structured dict with field deltas, cost, config changes, and regressions."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ['--json', 'compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+
+    assert payload['experiment_a'] == id_a
+    assert payload['experiment_b'] == id_b
+    assert 'topic' in payload['field_deltas']
+    topic_delta = payload['field_deltas']['topic']
+    assert topic_delta['f1_a'] == 1.0
+    assert topic_delta['f1_b'] == 0.0
+    assert topic_delta['is_classification'] is True
+    assert 'config_changes' in payload
+    assert payload['regressions'] == ['topic']

@@ -109,6 +109,7 @@ def test_baseline_set_cli_rejects_missing_experiment(tmp_path: Path, monkeypatch
     assert load_baselines(tmp_path) == {}
 
 
+@pytest.mark.usefixtures('rich_mode')
 def test_baseline_show_cli_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _setup_project_with_experiments(tmp_path)
     monkeypatch.chdir(tmp_path)

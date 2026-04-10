@@ -11,6 +11,7 @@ from rich.console import Console
 
 from engram.config.discovery import find_project_root
 from engram.display.tables import print_eval_report
+from engram.observability.output_mode import get_output_mode
 from engram.scoring.engine import score_experiment
 from engram.tracking.index import append_to_index
 
@@ -33,11 +34,15 @@ def score_command(
         raise typer.Exit(1)
 
     report = score_experiment(root, experiment_id)
-    print_eval_report(report)
+    if get_output_mode().use_rich:
+        print_eval_report(report)
+    else:
+        print(json.dumps(asdict(report), indent=2))
 
     if save:
         eval_path = exp_dir / 'eval.json'
         eval_path.write_text(json.dumps(asdict(report), indent=2))
 
         append_to_index(root, report)
-        console.print(f'[green]Report saved to {eval_path}[/green]')
+        if get_output_mode().use_rich:
+            console.print(f'[green]Report saved to {eval_path}[/green]')

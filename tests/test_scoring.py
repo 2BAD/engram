@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from engram.cli import app
 from engram.scoring.engine import score_experiment
 from engram.scoring.metrics import compute_confusion_matrix, compute_cost_stats, compute_field_metrics
 from engram.scoring.registry import resolve_scorer
@@ -388,3 +390,24 @@ def test_score_experiment_non_classification_field(tmp_path: Path):
     assert score_metrics.precision == pytest.approx(0.5)
     assert score_metrics.recall == pytest.approx(0.5)
     assert score_metrics.f1 == pytest.approx(0.5)
+
+
+def test_score_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """With --json, score emits an EvalReport as structured JSON."""
+    experiment_id = _setup_scored_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(app, ['--json', 'score', experiment_id])
+    assert result.exit_code == 0
+
+    payload = json.loads(result.output)
+    assert payload['experiment_id'] == experiment_id
+    assert payload['matched_examples'] == 3
+    # Field metrics serialized as a list of dicts with the full per-metric shape.
+    topic = next(fm for fm in payload['field_metrics'] if fm['field_name'] == 'topic')
+    assert topic['accuracy'] == pytest.approx(2 / 3)
+    assert topic['f1'] == pytest.approx(5 / 9)
+    assert topic['is_classification'] is True
+    # Confusion matrices and cost stats round-trip too.
+    assert len(payload['confusion_matrices']) == 1
+    assert payload['cost_total_usd'] == pytest.approx(0.04)

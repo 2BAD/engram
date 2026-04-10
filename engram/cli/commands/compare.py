@@ -1,5 +1,7 @@
 """Compare command: compare two experiments."""
 
+import json
+from dataclasses import asdict
 from typing import Annotated
 
 import typer
@@ -7,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from engram.config.discovery import find_project_root
+from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
 from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
 
@@ -87,6 +90,13 @@ def compare_command(
         from_id, to_id = baseline, experiment_a
 
     result = compare_experiments(root, from_id, to_id)
+    diff_lines = diff_config_snapshots(root, from_id, to_id, show_prompts=prompts)
+
+    if not get_output_mode().use_rich:
+        payload = asdict(result)
+        payload['config_changes'] = diff_lines
+        print(json.dumps(payload, indent=2))
+        return
 
     # Four stacked per-metric tables. Accuracy always shows real numbers; the other
     # three render "—" for non-classification fields (where they fall back to accuracy
@@ -108,14 +118,11 @@ def compare_command(
     console.print(cost_table)
     console.print()
 
-    # Config diff
-    diff_lines = diff_config_snapshots(root, from_id, to_id, show_prompts=prompts)
     if diff_lines:
         console.print('[bold]Config Changes:[/bold]')
         for line in diff_lines:
             console.print(f'  {line}')
         console.print()
 
-    # Regressions
     if result.regressions:
         console.print(f'[red bold]Regressions detected:[/red bold] {", ".join(result.regressions)}')

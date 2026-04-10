@@ -1,5 +1,6 @@
 """Baseline command: manage workflow baselines and implementation references."""
 
+import json
 from typing import Annotated
 
 import typer
@@ -7,6 +8,7 @@ from rich.console import Console
 
 from engram.config.discovery import find_project_root
 from engram.display.baseline import print_baseline_status
+from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import (
     load_baselines,
     lookup_experiment,
@@ -73,4 +75,8 @@ def show_baselines() -> None:
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    print_baseline_status(load_baselines(root))
+    baselines = load_baselines(root)
+    if get_output_mode().use_rich:
+        print_baseline_status(baselines)
+    else:
+        print(json.dumps(baselines, indent=2))
