@@ -6,20 +6,21 @@ Teams building AI-powered features need to iterate on prompts and models, measur
 
 ## Install
 
-Requires Python 3.14+.
+Install as a user-level CLI tool (recommended):
 
 ```sh
-uv add engram
+uv tool install git+https://github.com/2BAD/engram
 ```
+
+`engram` is then on your `$PATH`. Upgrade with `uv tool upgrade engram`, remove with `uv tool uninstall engram`.
 
 ## Quick start
 
-`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations of the same workflow (`classify-anthropic` and `classify-openai`) so you can compare platforms immediately, and a tiny labeled `sample` dataset.
+`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations of the same workflow (`classify-anthropic` and `classify-openai`) so you can compare platforms immediately, a tiny labeled `sample` dataset.
 
 ```sh
 engram init                                                     # scaffold project + two implementations + sample dataset
-export ANTHROPIC_API_KEY=sk-ant-...
-export OPENAI_API_KEY=sk-...
+cp .env.example .env                                            # then edit .env and paste your API keys
 engram status                                                   # verify both impls load cleanly
 engram eval classify-anthropic --dataset sample                 # run against Anthropic
 engram eval classify-openai --dataset sample                    # run against OpenAI
