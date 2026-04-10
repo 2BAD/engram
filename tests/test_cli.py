@@ -30,7 +30,6 @@ def test_init_creates_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert (tmp_path / 'workflows').is_dir()
     assert (tmp_path / 'implementations').is_dir()
     assert (tmp_path / 'datasets').is_dir()
-    assert (tmp_path / 'experiments' / '.gitignore').exists()
 
     # Shared workflow and dataset
     assert (tmp_path / 'workflows' / 'classify' / 'workflow.yaml').exists()

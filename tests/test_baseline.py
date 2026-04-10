@@ -184,5 +184,7 @@ def test_init_gitignore_includes_baselines(tmp_path: Path, monkeypatch: pytest.M
     result = runner.invoke(app, ['init'])
     assert result.exit_code == 0
 
-    gitignore = (tmp_path / 'experiments' / '.gitignore').read_text()
-    assert '!baselines.json' in gitignore
+    gitignore = (tmp_path / '.gitignore').read_text()
+    assert 'experiments/*' in gitignore
+    assert '!experiments/experiments.jsonl' in gitignore
+    assert '!experiments/baselines.json' in gitignore

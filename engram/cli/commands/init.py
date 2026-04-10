@@ -15,6 +15,11 @@ description: An engram evaluation project
 _GITIGNORE = """\
 .env
 __pycache__/
+
+# Per-experiment artifacts are local; only the index and baselines are tracked.
+experiments/*
+!experiments/experiments.jsonl
+!experiments/baselines.json
 """
 
 _ENV_EXAMPLE = """\
@@ -23,8 +28,6 @@ _ENV_EXAMPLE = """\
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 """
-
-_EXPERIMENTS_GITIGNORE = '*\n!.gitignore\n!experiments.jsonl\n!baselines.json\n'
 
 _WORKFLOW_YAML = """\
 name: classify
@@ -130,7 +133,6 @@ _TEMPLATES: dict[str, str] = {
     'engram.yaml': _ENGRAM_YAML,
     '.gitignore': _GITIGNORE,
     '.env.example': _ENV_EXAMPLE,
-    'experiments/.gitignore': _EXPERIMENTS_GITIGNORE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
     # Two implementations of the same workflow so the project is ready for a
     # cross-platform comparison out of the box. Prompts are identical in both
