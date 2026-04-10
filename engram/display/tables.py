@@ -41,6 +41,10 @@ def _format_score(value: float) -> str:
 
 
 def _print_metrics_table(report: EvalReport) -> None:
+    # Repeat-aware columns appear only when at least one field carries the new metrics.
+    # Single-repeat experiments render the same six-column table they did before.
+    show_repeat_columns = any(fm.accuracy_stdev is not None for fm in report.field_metrics)
+
     table = Table(title='Field Metrics')
     table.add_column('Field', style='bold')
     table.add_column('Accuracy', justify='right')
@@ -48,6 +52,11 @@ def _print_metrics_table(report: EvalReport) -> None:
     table.add_column('Recall', justify='right')
     table.add_column('F1', justify='right')
     table.add_column('N', justify='right')
+    if show_repeat_columns:
+        table.add_column('Stdev', justify='right')
+        table.add_column('Agree', justify='right')
+        table.add_column('Maj', justify='right')
+        table.add_column('Kappa', justify='right')
 
     for fm in report.field_metrics:
         if fm.is_classification:
@@ -68,10 +77,31 @@ def _print_metrics_table(report: EvalReport) -> None:
                 _NA_CELL,
                 str(fm.total),
             ]
+        if show_repeat_columns:
+            row.extend(
+                [
+                    _format_optional_pct(fm.accuracy_stdev),
+                    _format_optional_pct(fm.mean_agreement_rate),
+                    _format_optional_pct(fm.majority_rate),
+                    _format_optional_kappa(fm.fleiss_kappa),
+                ]
+            )
         table.add_row(*row)
 
     console.print(table)
     console.print()
+
+
+def _format_optional_pct(value: float | None) -> str:
+    if value is None:
+        return _NA_CELL
+    return f'{value:.1%}'
+
+
+def _format_optional_kappa(value: float | None) -> str:
+    if value is None:
+        return _NA_CELL
+    return f'{value:.2f}'
 
 
 def _print_cost_table(report: EvalReport) -> None:

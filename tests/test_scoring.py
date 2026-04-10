@@ -8,7 +8,13 @@ from typer.testing import CliRunner
 
 from engram.cli import app
 from engram.scoring.engine import score_experiment
-from engram.scoring.metrics import compute_confusion_matrix, compute_cost_stats, compute_field_metrics
+from engram.scoring.metrics import (
+    compute_accuracy_stdev,
+    compute_agreement_metrics,
+    compute_confusion_matrix,
+    compute_cost_stats,
+    compute_field_metrics,
+)
 from engram.scoring.registry import resolve_scorer
 from engram.scoring.scorers import exact_match, fuzzy_match, numeric_tolerance, set_match
 
@@ -198,6 +204,126 @@ def test_compute_cost_stats():
 
 def test_compute_cost_stats_empty():
     assert compute_cost_stats([]) == (0.0, 0.0, 0.0, 0.0)
+
+
+# --- Repeat-aware metrics ---
+
+
+def test_agreement_metrics_perfect_agreement():
+    """All 3 repeats agree on every input → mean=1.0, majority=1.0, kappa=1.0."""
+    predictions = {
+        '001.txt': ['A', 'A', 'A'],
+        '002.txt': ['B', 'B', 'B'],
+        '003.txt': ['A', 'A', 'A'],
+    }
+    mean, majority, kappa = compute_agreement_metrics(predictions, repeats=3)
+    assert mean == pytest.approx(1.0)
+    assert majority == pytest.approx(1.0)
+    assert kappa == pytest.approx(1.0)
+
+
+def test_agreement_metrics_split_decision():
+    """3 repeats with one input fully split (A,B,A → mode=A count=2; majority since 2>1.5)."""
+    predictions = {
+        '001.txt': ['A', 'A', 'A'],  # mode count 3, agreement 1.0
+        '002.txt': ['A', 'B', 'A'],  # mode count 2, agreement 2/3
+        '003.txt': ['A', 'B', 'C'],  # mode count 1, agreement 1/3, no majority
+    }
+    mean, majority, kappa = compute_agreement_metrics(predictions, repeats=3)
+    assert mean == pytest.approx((1.0 + 2 / 3 + 1 / 3) / 3)
+    # 2 of 3 inputs had a strict majority (>N/2): the all-A and the A,B,A.
+    assert majority == pytest.approx(2 / 3)
+    # Kappa is bounded; we sanity-check sign and that it's between -1 and 1.
+    assert kappa is not None
+    assert -1.0 <= kappa <= 1.0
+
+
+def test_agreement_metrics_fleiss_known_value():
+    """Hand-verified Fleiss kappa for a 2-item, 3-rater, 2-category case."""
+    # Item 1: 3 raters all picked A → row [3, 0]
+    # Item 2: 2 raters picked A, 1 picked B → row [2, 1]
+    # n=3, P_1 = (9 - 3) / (3*2) = 1.0
+    # P_2 = (4 + 1 - 3) / (3*2) = 2/6 = 0.333
+    # P_bar = (1.0 + 0.333) / 2 = 0.667
+    # p_A = (3+2)/(2*3) = 5/6, p_B = 1/6
+    # P_e = (5/6)^2 + (1/6)^2 = 25/36 + 1/36 = 26/36 = 0.722
+    # kappa = (0.667 - 0.722) / (1 - 0.722) = -0.055 / 0.278 ≈ -0.2
+    predictions = {
+        'item1': ['A', 'A', 'A'],
+        'item2': ['A', 'A', 'B'],
+    }
+    _, _, kappa = compute_agreement_metrics(predictions, repeats=3)
+    assert kappa == pytest.approx(-0.2, abs=0.01)
+
+
+def test_agreement_metrics_collapsed_to_one_label_returns_kappa_one():
+    """Edge case: every item is unanimous on the same label. Kappa is mathematically undefined; report 1.0."""
+    predictions = {
+        '001.txt': ['A', 'A', 'A'],
+        '002.txt': ['A', 'A', 'A'],
+    }
+    _, _, kappa = compute_agreement_metrics(predictions, repeats=3)
+    assert kappa == pytest.approx(1.0)
+
+
+def test_agreement_metrics_two_repeats_omits_majority():
+    """N=2 has no strict majority concept; majority_rate is None but mean and kappa still computed."""
+    predictions = {'001.txt': ['A', 'A'], '002.txt': ['A', 'B']}
+    mean, majority, kappa = compute_agreement_metrics(predictions, repeats=2)
+    assert mean is not None
+    assert majority is None
+    assert kappa is not None
+
+
+def test_agreement_metrics_single_repeat_returns_all_none():
+    """repeats=1 short-circuits — there's nothing to compare."""
+    assert compute_agreement_metrics({'001.txt': ['A']}, repeats=1) == (None, None, None)
+
+
+def test_agreement_metrics_fleiss_skips_partial_items():
+    """An item with fewer than `repeats` predictions is excluded from kappa but still contributes to mean."""
+    predictions = {
+        '001.txt': ['A', 'A', 'A'],  # full
+        '002.txt': ['B', 'B', 'B'],  # full
+        '003.txt': ['A', 'A'],  # one repeat failed; excluded from kappa only
+    }
+    mean, _, kappa = compute_agreement_metrics(predictions, repeats=3)
+    # Mean includes all three: (1 + 1 + 1) / 3 = 1.0
+    assert mean == pytest.approx(1.0)
+    # Kappa computed over the 2 full items, both unanimous on different labels.
+    # Each item: P_i = 1.0 for the row of all 3 in one category.
+    # P_bar = 1.0
+    # p_A = 3/6 = 0.5, p_B = 3/6 = 0.5; P_e = 0.5
+    # kappa = (1.0 - 0.5) / (1 - 0.5) = 1.0
+    assert kappa == pytest.approx(1.0)
+
+
+def test_accuracy_stdev_across_repeats():
+    """Stdev across per-repeat field accuracies."""
+    per_repeat = {
+        0: [True, True, False, False],   # 0.5
+        1: [True, True, True, False],    # 0.75
+        2: [True, True, True, True],     # 1.0
+    }
+    stdev = compute_accuracy_stdev(per_repeat)
+    # statistics.stdev([0.5, 0.75, 1.0]) = 0.25
+    assert stdev == pytest.approx(0.25)
+
+
+def test_accuracy_stdev_returns_none_when_only_one_repeat():
+    assert compute_accuracy_stdev({0: [True, False]}) is None
+
+
+def test_accuracy_stdev_skips_empty_repeats():
+    """A repeat that produced no scored examples doesn't enter the stdev computation."""
+    per_repeat = {
+        0: [True, True],   # 1.0
+        1: [],             # skipped
+        2: [False, False], # 0.0
+    }
+    stdev = compute_accuracy_stdev(per_repeat)
+    # statistics.stdev([1.0, 0.0])
+    assert stdev == pytest.approx(0.7071, abs=0.001)
 
 
 # --- Scoring engine integration ---
@@ -390,6 +516,93 @@ def test_score_experiment_non_classification_field(tmp_path: Path):
     assert score_metrics.precision == pytest.approx(0.5)
     assert score_metrics.recall == pytest.approx(0.5)
     assert score_metrics.f1 == pytest.approx(0.5)
+
+
+def test_score_experiment_with_repeats_populates_agreement_metrics(tmp_path: Path):
+    """End-to-end: a 3-repeat experiment scores cleanly with agreement metrics on the FieldMetrics."""
+    (tmp_path / 'engram.yaml').write_text('name: test\n')
+
+    wf_dir = tmp_path / 'workflows' / 'classify'
+    wf_dir.mkdir(parents=True)
+    (wf_dir / 'workflow.yaml').write_text(
+        'name: classify\n'
+        'output:\n'
+        '  fields:\n'
+        '    topic:\n'
+        '      type: enum\n'
+        '      values: [A, B]\n'
+        'scorers:\n'
+        '  topic: exact_match\n'
+    )
+
+    impl_dir = tmp_path / 'implementations' / 'classify-api'
+    impl_dir.mkdir(parents=True)
+    (impl_dir / 'implementation.yaml').write_text('workflow: classify\nplatform: api\nrunner: anthropic\n')
+
+    ds_dir = tmp_path / 'datasets' / 'test-ds'
+    ds_dir.mkdir(parents=True)
+    (ds_dir / 'dataset.yaml').write_text('name: test-ds\n')
+    (ds_dir / 'labels.json').write_text(json.dumps({'001.txt': {'topic': 'A'}, '002.txt': {'topic': 'B'}}))
+
+    experiment_id = 'classify-api_test-ds_repeats'
+    exp_dir = tmp_path / 'experiments' / experiment_id
+    exp_dir.mkdir(parents=True)
+
+    def _result(input_file: str, repeat_index: int, topic: str) -> dict:
+        return {
+            'input_file': input_file,
+            'output': {'topic': topic},
+            'status': 'succeeded',
+            'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+            'cost_usd': 0.0,
+            'latency_ms': 100,
+            'error': '',
+            'repeat_index': repeat_index,
+        }
+
+    # Input 001 (label A): all 3 repeats agree on A.
+    # Input 002 (label B): repeats split A, B, B → modal answer is B (correct), agreement 2/3.
+    results_data = {
+        'experiment_id': experiment_id,
+        'implementation': 'classify-api',
+        'dataset': 'test-ds',
+        'timestamp': '2026-04-04T12:00:00Z',
+        'total': 6,
+        'succeeded': 6,
+        'failed': 0,
+        'results': [
+            _result('001.txt', 0, 'A'),
+            _result('001.txt', 1, 'A'),
+            _result('001.txt', 2, 'A'),
+            _result('002.txt', 0, 'A'),
+            _result('002.txt', 1, 'B'),
+            _result('002.txt', 2, 'B'),
+        ],
+    }
+    (exp_dir / 'results.json').write_text(json.dumps(results_data))
+
+    report = score_experiment(tmp_path, experiment_id)
+    topic = report.field_metrics[0]
+
+    # Pooled accuracy: 5 of 6 scored predictions correct = 5/6.
+    assert topic.accuracy == pytest.approx(5 / 6)
+
+    # Repeat-aware metrics are all populated.
+    assert topic.accuracy_stdev is not None
+    assert topic.mean_agreement_rate == pytest.approx((1.0 + 2 / 3) / 2)
+    assert topic.majority_rate == pytest.approx(1.0)  # both inputs had a strict majority
+    assert topic.fleiss_kappa is not None
+
+
+def test_score_experiment_single_repeat_omits_agreement_metrics(tmp_path: Path):
+    """A single-repeat experiment leaves all four new fields as None — backward compat (D12)."""
+    experiment_id = _setup_scored_project(tmp_path)
+    report = score_experiment(tmp_path, experiment_id)
+    topic = report.field_metrics[0]
+    assert topic.mean_agreement_rate is None
+    assert topic.majority_rate is None
+    assert topic.fleiss_kappa is None
+    assert topic.accuracy_stdev is None
 
 
 def test_score_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

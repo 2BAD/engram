@@ -25,3 +25,6 @@ class RunResult:
     latency_ms: float = 0.0
     error: str = ''
     trace_id: str = ''
+    # Index into the repeat group for this input. 0 for single-repeat runs (the default).
+    # Older results.json files without this field load with repeat_index=0 unchanged.
+    repeat_index: int = 0

@@ -49,6 +49,33 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         },
     }
 
+    # Repeat-aware metrics. Persist only when at least one field carries them so single-repeat
+    # entries keep the schema they had before Tier 2. The walrus filters narrow the optional types
+    # for the type checker; they also serve as defensive runtime guards.
+    repeat_aware_fields = [fm for fm in report.field_metrics if fm.accuracy_stdev is not None]
+    if repeat_aware_fields:
+        summary['repeats'] = max(r.repeat_index for r in results) + 1
+        summary['field_accuracy_stdev'] = {
+            fm.field_name: round(stdev, 4)
+            for fm in repeat_aware_fields
+            if (stdev := fm.accuracy_stdev) is not None
+        }
+        summary['field_mean_agreement_rate'] = {
+            fm.field_name: round(value, 4)
+            for fm in repeat_aware_fields
+            if (value := fm.mean_agreement_rate) is not None
+        }
+        summary['field_majority_rate'] = {
+            fm.field_name: round(value, 4)
+            for fm in repeat_aware_fields
+            if (value := fm.majority_rate) is not None
+        }
+        summary['field_fleiss_kappa'] = {
+            fm.field_name: round(value, 4)
+            for fm in repeat_aware_fields
+            if (value := fm.fleiss_kappa) is not None
+        }
+
     # Calibration data for `engram estimate`: mean output tokens across runs
     # where we actually got a response. Omitted when absent so the estimator
     # falls back to its default instead of reading a degenerate 0.

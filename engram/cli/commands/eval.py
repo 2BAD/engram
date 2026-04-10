@@ -29,6 +29,15 @@ def eval_command(
             help='RNG seed for dataset subsampling only; does not seed model sampling',
         ),
     ] = 0,
+    repeats: Annotated[
+        int,
+        typer.Option(
+            '--repeat',
+            '-r',
+            help='Run each input N times to measure run-to-run noise. '
+            'Total triggers = inputs * repeats; concurrency is not scaled.',
+        ),
+    ] = 1,
 ) -> None:
     """Evaluate a workflow implementation against a dataset."""
     root = find_project_root()
@@ -53,7 +62,13 @@ def eval_command(
         raise typer.Exit(1)
 
     experiment_id = run_eval(
-        root, implementation, dataset, concurrency, limit=limit, sample_seed=sample_seed
+        root,
+        implementation,
+        dataset,
+        concurrency,
+        limit=limit,
+        sample_seed=sample_seed,
+        repeats=repeats,
     )
     console.print(f'[green]Experiment complete:[/green] {experiment_id}')
     console.print()

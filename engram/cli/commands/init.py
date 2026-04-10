@@ -29,9 +29,11 @@ _EXPERIMENTS_GITIGNORE = '*\n!.gitignore\n!experiments.jsonl\n!baselines.json\n'
 _WORKFLOW_YAML = """\
 name: classify
 description: Classify support conversations by topic and sentiment
+
 input:
   type: text
   description: A short customer support conversation
+
 output:
   fields:
     topic:
@@ -42,9 +44,11 @@ output:
       type: enum
       values: [positive, negative, neutral]
       description: Overall customer tone
+
 scorers:
   topic: exact_match
   sentiment: exact_match
+
 confusion_matrices:
   - topic
 """
@@ -53,12 +57,14 @@ _ANTHROPIC_IMPL_YAML = """\
 workflow: classify
 platform: api
 runner: anthropic
+
 runner_config:
   api_key_env: ANTHROPIC_API_KEY
   model: claude-sonnet-4-6
   max_tokens: "1024"
   # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
   temperature: "0"
+
 config_management:
   mode: local
 """
@@ -67,12 +73,14 @@ _OPENAI_IMPL_YAML = """\
 workflow: classify
 platform: api
 runner: openai
+
 runner_config:
   api_key_env: OPENAI_API_KEY
   model: gpt-5.4-nano
   max_tokens: "1024"
   # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
   temperature: "0"
+
 config_management:
   mode: local
 """

@@ -193,3 +193,85 @@ def test_sampling_skipped_when_limit_exceeds_dataset(tmp_path: Path, monkeypatch
 
     assert capture['kwargs']['sampling'] is None
     assert len(capture['kwargs']['results']) == 3
+
+
+# --- Repeats ---
+
+
+def test_repeats_runs_each_input_n_times(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 2)
+    capture: dict = {}
+    _install_runner_stubs(monkeypatch, capture)
+
+    _run(tmp_path, 'impl', 'small', concurrency=1, repeats=3)
+
+    results = capture['kwargs']['results']
+    assert len(results) == 6
+    # Grouped by input then repeat: input 0 r0, r1, r2; input 1 r0, r1, r2.
+    assert [(r.input_file, r.repeat_index) for r in results] == [
+        ('000.txt', 0),
+        ('000.txt', 1),
+        ('000.txt', 2),
+        ('001.txt', 0),
+        ('001.txt', 1),
+        ('001.txt', 2),
+    ]
+
+
+def test_repeats_default_one_preserves_legacy_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 3)
+    capture: dict = {}
+    _install_runner_stubs(monkeypatch, capture)
+
+    _run(tmp_path, 'impl', 'small', concurrency=1)
+
+    results = capture['kwargs']['results']
+    assert len(results) == 3
+    # Every result has the default repeat_index=0 — backward compat with existing readers.
+    assert all(r.repeat_index == 0 for r in results)
+
+
+def test_repeats_partial_failure_keeps_failed_repeat_in_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+    _install_runner_stubs(monkeypatch, capture)
+
+    # Make the runner's second call (repeat_index=1) raise.
+    call_count = {'n': 0}
+
+    class _FlakyRunner:
+        def snapshot_config(self, *_args, **_kwargs):
+            return ConfigSnapshot(implementation='impl', platform='api', runner='stub')
+
+        def trigger(self, content, *_args, **_kwargs):
+            call_count['n'] += 1
+            if call_count['n'] == 2:
+                msg = 'simulated rate limit'
+                raise RuntimeError(msg)
+            return RunResult(input_file='', status='succeeded', output={'echo': content})
+
+        def configure_pricing(self, _overrides):
+            pass
+
+    monkeypatch.setattr(loop_mod, 'get_runner', lambda _name: _FlakyRunner())
+
+    _run(tmp_path, 'impl', 'small', concurrency=1, repeats=3)
+
+    results = capture['kwargs']['results']
+    assert len(results) == 3
+    statuses = sorted(r.status for r in results)
+    assert statuses == ['failed', 'succeeded', 'succeeded']
+    failed = next(r for r in results if r.status == 'failed')
+    assert failed.repeat_index == 1
+    assert 'simulated rate limit' in failed.error
+
+
+def test_repeats_zero_or_negative_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+    _install_runner_stubs(monkeypatch, capture)
+
+    with pytest.raises(ValueError, match='repeats must be >= 1'):
+        _run(tmp_path, 'impl', 'small', concurrency=1, repeats=0)

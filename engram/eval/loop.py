@@ -20,13 +20,14 @@ from engram.observability.output_mode import get_output_mode
 from engram.runners.registry import get_runner
 
 
-def run_eval(
+def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each option maps to a CLI flag
     root: Path,
     implementation_name: str,
     dataset_name: str,
     concurrency: int = 5,
     limit: int | None = None,
     sample_seed: int = 0,
+    repeats: int = 1,
 ) -> str:
     """
     Run a workflow against a dataset, save results.
@@ -36,8 +37,16 @@ def run_eval(
     two runs with the same `limit` and `sample_seed` are directly comparable. The
     sample seed only controls dataset subsampling, not model sampling.
 
+    `repeats` runs each input N times to measure the workflow's run-to-run noise.
+    Each repeat is a separate API call; the total number of triggers is N * len(inputs)
+    and concurrency is not scaled to compensate. Results are stored flat with a
+    `repeat_index` on each RunResult, grouped by input in the saved order.
+
     Returns the experiment ID.
     """
+    if repeats < 1:
+        msg = f'repeats must be >= 1, got {repeats}'
+        raise ValueError(msg)
     impl_config = load_implementation(root, implementation_name)
     impl_dir = root / 'implementations' / implementation_name
 
@@ -64,19 +73,27 @@ def run_eval(
 
     results: list[RunResult] = []
     mode = get_output_mode()
+    total_triggers = len(inputs) * repeats
 
-    def _run_single(filename: str, content: str) -> RunResult:
+    def _run_single(filename: str, content: str, repeat_index: int) -> RunResult:
         result = runner.trigger(content, impl_config, impl_dir)
         result.input_file = filename
+        result.repeat_index = repeat_index
         return result
 
     if mode.use_rich:
         with Progress() as progress:
-            task = progress.add_task(f'Running {implementation_name}', total=len(inputs))
-            results = _run_concurrent(inputs, _run_single, concurrency, progress, task)
+            task = progress.add_task(f'Running {implementation_name}', total=total_triggers)
+            results = _run_concurrent(inputs, _run_single, concurrency, repeats, progress, task)
     else:
-        log_event('run_start', implementation=implementation_name, dataset=dataset_name, total=len(inputs))
-        results = _run_concurrent(inputs, _run_single, concurrency)
+        log_event(
+            'run_start',
+            implementation=implementation_name,
+            dataset=dataset_name,
+            total=len(inputs),
+            repeats=repeats,
+        )
+        results = _run_concurrent(inputs, _run_single, concurrency, repeats)
         log_event('run_complete', experiment_id=experiment_id, total=len(results))
 
     # Save results
@@ -102,26 +119,32 @@ def _run_concurrent(
     inputs: list[tuple[str, str]],
     run_fn: object,
     concurrency: int,
+    repeats: int = 1,
     progress: Progress | None = None,
     task_id: object = None,
 ) -> list[RunResult]:
-    """Run inputs concurrently and return results in input order."""
-    results: dict[int, RunResult] = {}
+    """Run inputs concurrently with N repeats per input; results are grouped by input then repeat."""
+    results: dict[tuple[int, int], RunResult] = {}
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {executor.submit(run_fn, filename, content): i for i, (filename, content) in enumerate(inputs)}
+        futures = {
+            executor.submit(run_fn, filename, content, r): (i, r)
+            for i, (filename, content) in enumerate(inputs)
+            for r in range(repeats)
+        }
 
         for future in as_completed(futures):
-            idx = futures[future]
+            i, r = futures[future]
             try:
-                results[idx] = future.result()
+                results[(i, r)] = future.result()
             except Exception as e:  # noqa: BLE001
-                results[idx] = RunResult(
-                    input_file=inputs[idx][0],
+                results[(i, r)] = RunResult(
+                    input_file=inputs[i][0],
                     status='failed',
                     error=str(e),
+                    repeat_index=r,
                 )
             if progress is not None and task_id is not None:
                 progress.advance(task_id)
 
-    return [results[i] for i in range(len(inputs))]
+    return [results[(i, r)] for i in range(len(inputs)) for r in range(repeats)]

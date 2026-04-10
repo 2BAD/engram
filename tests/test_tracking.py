@@ -261,6 +261,126 @@ def test_index_omits_avg_output_tokens_when_no_data(tmp_path: Path):
     assert 'avg_output_tokens' not in entries[0]
 
 
+def test_index_records_repeat_aware_metrics(tmp_path: Path):
+    """A multi-repeat experiment writes the four new per-field metrics and the repeats count."""
+    (tmp_path / 'experiments').mkdir()
+    exp_id = 'repeat-exp'
+    exp_dir = tmp_path / 'experiments' / exp_id
+    exp_dir.mkdir()
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': exp_id,
+                'implementation': 'classify-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+                'total': 4,
+                'succeeded': 4,
+                'failed': 0,
+                'results': [
+                    {
+                        'input_file': '001.txt',
+                        'output': {'topic': 'A'},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                        'cost_usd': 0.0,
+                        'latency_ms': 100,
+                        'error': '',
+                        'repeat_index': r,
+                    }
+                    for r in range(4)
+                ],
+            }
+        )
+    )
+    (exp_dir / 'config-snapshot.json').write_text(json.dumps({'models': ['claude-sonnet']}))
+
+    report = EvalReport(
+        experiment_id=exp_id,
+        field_metrics=[
+            FieldMetrics(
+                field_name='topic',
+                accuracy=0.85,
+                precision=0.85,
+                recall=0.85,
+                f1=0.85,
+                total=4,
+                correct=3,
+                accuracy_stdev=0.05,
+                mean_agreement_rate=0.95,
+                majority_rate=1.0,
+                fleiss_kappa=0.78,
+            )
+        ],
+    )
+
+    append_to_index(tmp_path, report)
+    entry = read_index(tmp_path)[0]
+
+    assert entry['repeats'] == 4
+    assert entry['field_accuracy_stdev'] == {'topic': 0.05}
+    assert entry['field_mean_agreement_rate'] == {'topic': 0.95}
+    assert entry['field_majority_rate'] == {'topic': 1.0}
+    assert entry['field_fleiss_kappa'] == {'topic': 0.78}
+
+
+def test_index_omits_repeat_aware_metrics_for_single_repeat(tmp_path: Path):
+    """Single-repeat experiments must not gain the new schema keys (D12 backward compat)."""
+    (tmp_path / 'experiments').mkdir()
+    exp_id = 'single-exp'
+    exp_dir = tmp_path / 'experiments' / exp_id
+    exp_dir.mkdir()
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': exp_id,
+                'implementation': 'classify-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+                'total': 1,
+                'succeeded': 1,
+                'failed': 0,
+                'results': [
+                    {
+                        'input_file': '001.txt',
+                        'output': {'topic': 'A'},
+                        'status': 'succeeded',
+                        'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                        'cost_usd': 0.0,
+                        'latency_ms': 100,
+                        'error': '',
+                    }
+                ],
+            }
+        )
+    )
+    (exp_dir / 'config-snapshot.json').write_text(json.dumps({'models': ['claude-sonnet']}))
+
+    report = EvalReport(
+        experiment_id=exp_id,
+        field_metrics=[
+            FieldMetrics(
+                field_name='topic',
+                accuracy=1.0,
+                precision=1.0,
+                recall=1.0,
+                f1=1.0,
+                total=1,
+                correct=1,
+            )
+        ],
+    )
+
+    append_to_index(tmp_path, report)
+    entry = read_index(tmp_path)[0]
+
+    assert 'repeats' not in entry
+    assert 'field_accuracy_stdev' not in entry
+    assert 'field_mean_agreement_rate' not in entry
+    assert 'field_majority_rate' not in entry
+    assert 'field_fleiss_kappa' not in entry
+
+
 # --- Field Delta ---
 
 
