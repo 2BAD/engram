@@ -45,6 +45,7 @@ class AnthropicApiRunner(Runner):
             raise MissingAPIKeyError(env_var) from e
         model = rc['model']
         max_tokens = int(rc.get('max_tokens', '4096'))
+        temperature = float(rc.get('temperature', '0'))
 
         system_prompt = _load_system_prompt(impl_dir)
 
@@ -55,6 +56,7 @@ class AnthropicApiRunner(Runner):
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
+                temperature=temperature,
                 system=system_prompt,
                 messages=[{'role': 'user', 'content': input_data}],
             )

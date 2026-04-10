@@ -115,7 +115,7 @@ def test_save_results_with_sampling(tmp_path: Path):
     exp_dir = tmp_path / 'experiments' / 'sampled-exp'
     exp_dir.mkdir(parents=True)
 
-    sampling = {'limit': 2, 'seed': 7, 'source_total': 10}
+    sampling = {'limit': 2, 'sample_seed': 7, 'source_total': 10}
     save_results(exp_dir, 'sampled-exp', 'impl', 'ds', [], sampling=sampling)
 
     metadata, _ = load_results(exp_dir)
@@ -163,9 +163,9 @@ def test_sampling_is_deterministic_with_seed(tmp_path: Path, monkeypatch: pytest
     capture: dict = {}
     _install_runner_stubs(monkeypatch, capture)
 
-    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, seed=42)
-    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, seed=42)
-    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, seed=99)
+    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, sample_seed=42)
+    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, sample_seed=42)
+    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, sample_seed=99)
 
     files = capture['files']
     assert len(files[0]) == 5
@@ -179,9 +179,9 @@ def test_sampling_records_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     capture: dict = {}
     _install_runner_stubs(monkeypatch, capture)
 
-    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, seed=42)
+    _run(tmp_path, 'impl', 'big', concurrency=1, limit=5, sample_seed=42)
 
-    assert capture['kwargs']['sampling'] == {'limit': 5, 'seed': 42, 'source_total': 20}
+    assert capture['kwargs']['sampling'] == {'limit': 5, 'sample_seed': 42, 'source_total': 20}
 
 
 def test_sampling_skipped_when_limit_exceeds_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -189,7 +189,7 @@ def test_sampling_skipped_when_limit_exceeds_dataset(tmp_path: Path, monkeypatch
     capture: dict = {}
     _install_runner_stubs(monkeypatch, capture)
 
-    _run(tmp_path, 'impl', 'small', concurrency=1, limit=100, seed=0)
+    _run(tmp_path, 'impl', 'small', concurrency=1, limit=100, sample_seed=0)
 
     assert capture['kwargs']['sampling'] is None
     assert len(capture['kwargs']['results']) == 3

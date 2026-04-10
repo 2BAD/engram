@@ -26,14 +26,15 @@ def run_eval(
     dataset_name: str,
     concurrency: int = 5,
     limit: int | None = None,
-    seed: int = 0,
+    sample_seed: int = 0,
 ) -> str:
     """
     Run a workflow against a dataset, save results.
 
     If `limit` is set and smaller than the dataset size, samples that many inputs
-    deterministically using `seed`. Same seed produces the same subset, so two
-    runs with the same `limit` and `seed` are directly comparable.
+    deterministically using `sample_seed`. Same seed produces the same subset, so
+    two runs with the same `limit` and `sample_seed` are directly comparable. The
+    sample seed only controls dataset subsampling, not model sampling.
 
     Returns the experiment ID.
     """
@@ -53,10 +54,10 @@ def run_eval(
     sampling: dict | None = None
     source_total = len(inputs)
     if limit is not None and limit < source_total:
-        rng = random.Random(seed)
+        rng = random.Random(sample_seed)
         inputs = sorted(rng.sample(inputs, limit))
-        sampling = {'limit': limit, 'seed': seed, 'source_total': source_total}
-        log_event('sampling', limit=limit, seed=seed, source_total=source_total)
+        sampling = {'limit': limit, 'sample_seed': sample_seed, 'source_total': source_total}
+        log_event('sampling', limit=limit, sample_seed=sample_seed, source_total=source_total)
 
     timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
     experiment_id = f'{implementation_name}_{dataset_name}_{timestamp}'

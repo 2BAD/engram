@@ -45,6 +45,7 @@ class OpenAIApiRunner(Runner):
             raise MissingAPIKeyError(env_var) from e
         model = rc['model']
         max_tokens = int(rc.get('max_tokens', '4096'))
+        temperature = float(rc.get('temperature', '0'))
 
         system_prompt = _load_system_prompt(impl_dir)
         messages: list[dict[str, str]] = []
@@ -59,6 +60,7 @@ class OpenAIApiRunner(Runner):
             response = client.chat.completions.create(
                 model=model,
                 max_completion_tokens=max_tokens,
+                temperature=temperature,
                 response_format={'type': 'json_object'},
                 messages=messages,
             )

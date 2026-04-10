@@ -57,6 +57,8 @@ runner_config:
   api_key_env: ANTHROPIC_API_KEY
   model: claude-sonnet-4-6
   max_tokens: "1024"
+  # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
+  temperature: "0"
 config_management:
   mode: local
 """
@@ -69,6 +71,8 @@ runner_config:
   api_key_env: OPENAI_API_KEY
   model: gpt-5.4-nano
   max_tokens: "1024"
+  # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
+  temperature: "0"
 config_management:
   mode: local
 """

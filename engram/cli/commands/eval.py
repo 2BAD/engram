@@ -20,9 +20,15 @@ def eval_command(
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,
     limit: Annotated[
         int | None,
-        typer.Option('--limit', '-n', help='Sample N inputs from the dataset (deterministic with --seed)'),
+        typer.Option('--limit', '-n', help='Sample N inputs from the dataset (deterministic with --sample-seed)'),
     ] = None,
-    seed: Annotated[int, typer.Option('--seed', help='RNG seed for sampling; same seed produces the same subset')] = 0,
+    sample_seed: Annotated[
+        int,
+        typer.Option(
+            '--sample-seed',
+            help='RNG seed for dataset subsampling only; does not seed model sampling',
+        ),
+    ] = 0,
 ) -> None:
     """Evaluate a workflow implementation against a dataset."""
     root = find_project_root()
@@ -46,7 +52,9 @@ def eval_command(
             console.print(f'  [cyan]export {var}=...[/cyan]')
         raise typer.Exit(1)
 
-    experiment_id = run_eval(root, implementation, dataset, concurrency, limit=limit, seed=seed)
+    experiment_id = run_eval(
+        root, implementation, dataset, concurrency, limit=limit, sample_seed=sample_seed
+    )
     console.print(f'[green]Experiment complete:[/green] {experiment_id}')
     console.print()
     console.print('[bold]Next steps:[/bold]')

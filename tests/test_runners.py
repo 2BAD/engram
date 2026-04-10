@@ -116,6 +116,61 @@ def test_api_runner_trigger(tmp_path: Path):
     assert result.cost_usd == pytest.approx(0.00105)
 
 
+def test_api_runner_defaults_temperature_to_zero(tmp_path: Path):
+    """When runner_config has no temperature, the API call must receive temperature=0.0."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()  # no temperature in runner_config
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 1
+    mock_response.usage.output_tokens = 1
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['temperature'] == 0.0
+
+
+def test_api_runner_forwards_explicit_temperature(tmp_path: Path):
+    """An explicit temperature in runner_config is forwarded as a float."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'claude-sonnet-4-5-20250514',
+            'max_tokens': '4096',
+            'temperature': '0.7',
+        },
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 1
+    mock_response.usage.output_tokens = 1
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['temperature'] == 0.7
+
+
 def test_api_runner_trigger_unknown_model_zero_cost(tmp_path: Path):
     prompts_dir = tmp_path / 'prompts'
     prompts_dir.mkdir()
@@ -467,6 +522,53 @@ def test_openai_runner_trigger(tmp_path: Path):
     assert result.latency_ms > 0
     # 100 * 0.0000001 + 50 * 0.0000004 = 0.00001 + 0.00002 = 0.00003
     assert result.cost_usd == pytest.approx(0.00003)
+
+
+def test_openai_runner_defaults_temperature_to_zero(tmp_path: Path):
+    """When runner_config has no temperature, the API call must receive temperature=0.0."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config()  # no temperature in runner_config
+    mock_response = _make_openai_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.openai_api.openai.OpenAI') as mock_cls,
+        patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
+    ):
+        mock_cls.return_value.chat.completions.create.return_value = mock_response
+        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
+        assert call_kwargs['temperature'] == 0.0
+
+
+def test_openai_runner_forwards_explicit_temperature(tmp_path: Path):
+    """An explicit temperature in runner_config is forwarded as a float."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config(
+        runner_config={
+            'api_key_env': 'OPENAI_API_KEY',
+            'model': 'gpt-5.4-nano',
+            'max_tokens': '4096',
+            'temperature': '0.5',
+        },
+    )
+    mock_response = _make_openai_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.openai_api.openai.OpenAI') as mock_cls,
+        patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
+    ):
+        mock_cls.return_value.chat.completions.create.return_value = mock_response
+        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
+        assert call_kwargs['temperature'] == 0.5
 
 
 def test_openai_runner_requests_json_mode(tmp_path: Path):
