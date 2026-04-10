@@ -2,12 +2,14 @@
 
 import json
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from engram.cli.picker import pick_experiment_id
 from engram.config.discovery import find_project_root
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
@@ -48,8 +50,39 @@ def _print_metric_table(title: str, result: ComparisonResult, from_id: str, to_i
     console.print()
 
 
+def _resolve_compare_pair(
+    root: Path,
+    experiment_a: str,
+    experiment_b: str | None,
+    against: str | None,
+) -> tuple[str, str]:
+    """Derive the (from, to) pair for compare_experiments; baseline fallback kicks in when only `experiment_a` is given."""  # noqa: E501
+    if experiment_b is not None:
+        return experiment_a, experiment_b
+    if against is not None:
+        return against, experiment_a
+
+    try:
+        workflow, _impl = lookup_experiment(root, experiment_a)
+    except FileNotFoundError as e:
+        console.print(f'[red]{e}[/red]')
+        raise typer.Exit(1) from None
+    baseline = get_workflow_baseline(root, workflow)
+    if baseline is None:
+        console.print(
+            f'[red]No baseline set for workflow [bold]{workflow}[/bold].[/red]\n'
+            '  Set one with [bold]engram baseline set <experiment-id>[/bold] '
+            'or pass a second experiment ID explicitly.'
+        )
+        raise typer.Exit(1)
+    return baseline, experiment_a
+
+
 def compare_command(
-    experiment_a: Annotated[str, typer.Argument(help='Experiment ID to compare')],
+    experiment_a: Annotated[
+        str | None,
+        typer.Argument(help='Experiment ID to compare. Omit to pick interactively from recent runs.'),
+    ] = None,
     experiment_b: Annotated[
         str | None,
         typer.Argument(help='Optional second experiment ID. Defaults to the workflow baseline.'),
@@ -66,28 +99,10 @@ def compare_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    # Resolve the (from, to) pair. Two-arg mode preserves the original (A, B) order
-    # exactly. Single-arg modes treat the user-supplied ID as the new ('to') side and
-    # the baseline / --against as the 'from' side, so positive deltas read as wins.
-    if experiment_b is not None:
-        from_id, to_id = experiment_a, experiment_b
-    elif against is not None:
-        from_id, to_id = against, experiment_a
-    else:
-        try:
-            workflow, _impl = lookup_experiment(root, experiment_a)
-        except FileNotFoundError as e:
-            console.print(f'[red]{e}[/red]')
-            raise typer.Exit(1) from None
-        baseline = get_workflow_baseline(root, workflow)
-        if baseline is None:
-            console.print(
-                f'[red]No baseline set for workflow [bold]{workflow}[/bold].[/red]\n'
-                '  Set one with [bold]engram baseline set <experiment-id>[/bold] '
-                'or pass a second experiment ID explicitly.'
-            )
-            raise typer.Exit(1)
-        from_id, to_id = baseline, experiment_a
+    if experiment_a is None:
+        experiment_a = pick_experiment_id(root)
+
+    from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
 
     result = compare_experiments(root, from_id, to_id)
     diff_lines = diff_config_snapshots(root, from_id, to_id, show_prompts=prompts)

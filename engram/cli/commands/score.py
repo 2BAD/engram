@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from engram.cli.picker import pick_experiment_id
 from engram.config.discovery import find_project_root
 from engram.display.tables import print_eval_report
 from engram.observability.output_mode import get_output_mode
@@ -19,7 +20,10 @@ console = Console()
 
 
 def score_command(
-    experiment_id: Annotated[str, typer.Argument(help='Experiment ID to score')],
+    experiment_id: Annotated[
+        str | None,
+        typer.Argument(help='Experiment ID to score. Omit to pick interactively from recent runs.'),
+    ] = None,
     save: Annotated[bool, typer.Option('--save', help='Save report and update experiment index')] = False,
 ) -> None:
     """Score experiment results against dataset labels."""
@@ -27,6 +31,9 @@ def score_command(
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
+
+    if experiment_id is None:
+        experiment_id = pick_experiment_id(root)
 
     exp_dir = root / 'experiments' / experiment_id
     if not exp_dir.exists():

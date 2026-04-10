@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from engram.cli.picker import pick_experiment_id
 from engram.config.discovery import find_project_root
 from engram.display.baseline import print_baseline_status
 from engram.observability.output_mode import get_output_mode
@@ -25,12 +26,15 @@ baseline_app = typer.Typer(
 )
 
 
-def _resolve(experiment_id: str) -> tuple:
-    """Find project root and look up the experiment's (workflow, implementation)."""
+def _resolve(experiment_id: str | None) -> tuple:
+    """Find the project root and resolve the experiment's (workflow, implementation); picker runs when `experiment_id` is None."""  # noqa: E501
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
+
+    if experiment_id is None:
+        experiment_id = pick_experiment_id(root)
 
     try:
         workflow, implementation = lookup_experiment(root, experiment_id)
@@ -41,25 +45,31 @@ def _resolve(experiment_id: str) -> tuple:
         console.print(f'[red]Could not resolve experiment {experiment_id}: {e}[/red]')
         raise typer.Exit(1) from None
 
-    return root, workflow, implementation
+    return root, workflow, implementation, experiment_id
 
 
 @baseline_app.command('set')
 def set_baseline(
-    experiment_id: Annotated[str, typer.Argument(help='Experiment ID to mark as the workflow baseline')],
+    experiment_id: Annotated[
+        str | None,
+        typer.Argument(help='Experiment ID to mark as the workflow baseline. Omit to pick interactively.'),
+    ] = None,
 ) -> None:
     """Set this experiment as the workflow baseline (the frozen anchor)."""
-    root, workflow, _impl = _resolve(experiment_id)
+    root, workflow, _impl, experiment_id = _resolve(experiment_id)
     set_workflow_baseline(root, workflow, experiment_id)
     console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {experiment_id}[/green]')
 
 
 @baseline_app.command('promote')
 def promote_reference(
-    experiment_id: Annotated[str, typer.Argument(help='Experiment ID to promote as its implementation reference')],
+    experiment_id: Annotated[
+        str | None,
+        typer.Argument(help='Experiment ID to promote as its implementation reference. Omit to pick interactively.'),
+    ] = None,
 ) -> None:
     """Promote this experiment to be its implementation's current reference."""
-    root, workflow, implementation = _resolve(experiment_id)
+    root, workflow, implementation, experiment_id = _resolve(experiment_id)
     set_impl_reference(root, workflow, implementation, experiment_id)
     console.print(
         f'[green]Promoted [bold]{implementation}[/bold] reference for workflow '
