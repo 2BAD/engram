@@ -35,7 +35,7 @@ def pick_experiment_id(root: Path, limit: int = _DEFAULT_LIMIT) -> str:
     if not entries:
         console.print('[red]No experiments available to pick from.[/red]')
         console.print(
-            'Run [cyan]engram eval <impl> --dataset <name>[/cyan] and '
+            'Run [cyan]engram run <impl> --dataset <name>[/cyan] and '
             '[cyan]engram score <id> --save[/cyan] to populate the index first.'
         )
         raise typer.Exit(1)

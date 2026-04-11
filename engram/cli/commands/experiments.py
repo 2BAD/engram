@@ -70,7 +70,7 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
     if not entries:
         if total == 0:
             console.print(
-                '[dim]No experiments in the index yet. Run [bold]engram eval <impl> --dataset <name>[/bold] '
+                '[dim]No experiments in the index yet. Run [bold]engram run <impl> --dataset <name>[/bold] '
                 'and then [bold]engram score <experiment-id> --save[/bold] to populate it.[/dim]'
             )
         else:

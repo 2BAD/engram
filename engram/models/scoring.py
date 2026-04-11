@@ -19,7 +19,7 @@ class FieldMetrics:
     # three values fall back to accuracy and display should render them as "—".
     is_classification: bool = False
     # Repeat-aware metrics, populated only when an experiment has multiple repeats per
-    # input (engram eval --repeat N). All four are None for single-repeat runs.
+    # input (engram run --repeat N). All four are None for single-repeat runs.
     # mean_agreement_rate: per-input fraction of repeats matching the modal answer, averaged across inputs.
     # majority_rate: fraction of inputs where strictly more than N/2 repeats agreed; only defined for N >= 3.
     # fleiss_kappa: chance-corrected inter-repeat agreement (Fleiss 1971); only meaningful for categorical fields.

@@ -4,9 +4,9 @@ from .baseline import baseline_app
 from .compare import compare_command
 from .config import config_app
 from .estimate import estimate_command
-from .eval import eval_command
 from .experiments import experiments_app
 from .init import init_command
+from .run import run_command
 from .score import score_command
 from .status import status_command
 from .traces import traces_app
@@ -16,9 +16,9 @@ __all__ = [
     'compare_command',
     'config_app',
     'estimate_command',
-    'eval_command',
     'experiments_app',
     'init_command',
+    'run_command',
     'score_command',
     'status_command',
     'traces_app',

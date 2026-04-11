@@ -1,4 +1,4 @@
-"""Eval command: execute a workflow against a dataset."""
+"""Run command: execute a workflow against a dataset."""
 
 import os
 from typing import Annotated
@@ -14,7 +14,7 @@ from engram.runners.registry import get_runner
 console = Console()
 
 
-def eval_command(
+def run_command(
     implementation: Annotated[str, typer.Argument(help='Implementation name')],
     dataset: Annotated[str, typer.Option('--dataset', '-d', help='Dataset name')],
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,

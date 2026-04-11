@@ -45,7 +45,7 @@ def test_picker_exits_when_stdin_not_tty(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_picker_exits_when_index_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Empty index → helpful error pointing at `engram eval` + `engram score --save`."""
+    """Empty index → helpful error pointing at `engram run` + `engram score --save`."""
     (tmp_path / 'engram.yaml').write_text('name: test\n')
     (tmp_path / 'experiments').mkdir()
     monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
