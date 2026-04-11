@@ -31,6 +31,32 @@ def set_match(predicted: Any, expected: Any) -> bool:
     return {str(v).strip().lower() for v in predicted} == {str(v).strip().lower() for v in expected}
 
 
+def contains(predicted: Any, expected: Any) -> bool:
+    """Check if predicted string contains the expected substring (case-insensitive)."""
+    return str(expected).strip().lower() in str(predicted).strip().lower()
+
+
+def contains_all(predicted: Any, expected: Any) -> bool:
+    """Check if predicted string contains all expected substrings (case-insensitive)."""
+    haystack = str(predicted).strip().lower()
+    needles = _to_string_list(expected)
+    return all(n in haystack for n in needles)
+
+
+def contains_any(predicted: Any, expected: Any) -> bool:
+    """Check if predicted string contains at least one expected substring (case-insensitive)."""
+    haystack = str(predicted).strip().lower()
+    needles = _to_string_list(expected)
+    return any(n in haystack for n in needles)
+
+
+def _to_string_list(value: Any) -> list[str]:
+    """Normalize a list or comma-separated string into lowered, stripped strings."""
+    if isinstance(value, str):
+        return [s.strip().lower() for s in value.split(',') if s.strip()]
+    return [str(v).strip().lower() for v in value]
+
+
 def numeric_tolerance(tolerance: float = 0.1) -> Callable[[Any, Any], bool]:
     """Check if predicted value is within a percentage tolerance of expected."""
 

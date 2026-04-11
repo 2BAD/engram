@@ -16,7 +16,15 @@ from engram.scoring.metrics import (
     compute_field_metrics,
 )
 from engram.scoring.registry import resolve_scorer
-from engram.scoring.scorers import exact_match, fuzzy_match, numeric_tolerance, set_match
+from engram.scoring.scorers import (
+    contains,
+    contains_all,
+    contains_any,
+    exact_match,
+    fuzzy_match,
+    numeric_tolerance,
+    set_match,
+)
 
 # --- Built-in scorers ---
 
@@ -37,6 +45,43 @@ def test_set_match():
     assert set_match(['A', 'B'], ['B', 'A'])
     assert set_match('A, B', 'B, A')
     assert not set_match(['A', 'B'], ['A', 'C'])
+
+
+def test_contains():
+    assert contains('The topic is Finance and Banking', 'finance')
+    assert contains('  HELLO WORLD  ', 'hello')
+    assert not contains('The topic is Finance', 'healthcare')
+    assert contains(123, '12')
+
+
+def test_contains_all_with_list():
+    assert contains_all('The topic is Finance and the sentiment is Positive', ['finance', 'positive'])
+    assert not contains_all('The topic is Finance', ['finance', 'healthcare'])
+
+
+def test_contains_all_with_csv_string():
+    assert contains_all('Finance and Positive outcome', 'finance, positive')
+    assert not contains_all('Finance only', 'finance, positive')
+
+
+def test_contains_all_empty_expected():
+    assert contains_all('anything', [])
+    assert contains_all('anything', '')
+
+
+def test_contains_any_with_list():
+    assert contains_any('The topic is Finance', ['finance', 'healthcare'])
+    assert not contains_any('The topic is Sports', ['finance', 'healthcare'])
+
+
+def test_contains_any_with_csv_string():
+    assert contains_any('Positive sentiment', 'negative, positive')
+    assert not contains_any('Neutral sentiment', 'negative, positive')
+
+
+def test_contains_any_empty_expected():
+    assert not contains_any('anything', [])
+    assert not contains_any('anything', '')
 
 
 def test_numeric_tolerance():
@@ -72,6 +117,23 @@ def test_resolve_bare_numeric_tolerance():
     scorer = resolve_scorer('numeric_tolerance')
     assert scorer(100, 105)
     assert not scorer(80, 100)
+
+
+def test_resolve_contains():
+    scorer = resolve_scorer('contains')
+    assert scorer('The topic is Finance', 'finance')
+    assert not scorer('Sports news', 'finance')
+
+
+def test_resolve_contains_all():
+    scorer = resolve_scorer('contains_all')
+    assert scorer('Finance and Positive', ['finance', 'positive'])
+
+
+def test_resolve_contains_any():
+    scorer = resolve_scorer('contains_any')
+    assert scorer('Finance report', ['finance', 'healthcare'])
+    assert not scorer('Sports report', ['finance', 'healthcare'])
 
 
 def test_resolve_unknown():

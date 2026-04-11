@@ -14,6 +14,9 @@ _BUILTIN_SCORERS: dict[str, Any] = {
     'exact_match': builtin_scorers.exact_match,
     'fuzzy_match': builtin_scorers.fuzzy_match,
     'set_match': builtin_scorers.set_match,
+    'contains': builtin_scorers.contains,
+    'contains_all': builtin_scorers.contains_all,
+    'contains_any': builtin_scorers.contains_any,
     'numeric_tolerance': builtin_scorers.numeric_tolerance,
 }
 
