@@ -139,9 +139,10 @@ def test_run_command_prints_next_step_hint(tmp_path: Path, monkeypatch: pytest.M
 
     assert result.exit_code == 0
     assert 'Experiment complete' in result.output
-    # Output shows the short_id prominently and the full experiment id in parens.
+    # Output shows the short_id and impl/dataset. Full id is hidden from users.
     assert '#7' in result.output
-    assert 'classify-anthropic_sample_fake-id' in result.output
+    assert 'classify-anthropic/sample' in result.output
+    assert 'classify-anthropic_sample_fake-id' not in result.output
     # Hint block names the score command with the short_id and the list command.
     assert 'engram score 7 --save' in result.output
     assert 'engram experiments list' in result.output

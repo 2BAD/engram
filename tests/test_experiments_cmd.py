@@ -68,18 +68,26 @@ def test_experiments_list_shows_rows(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _seed_index(
         tmp_path,
         [
-            _make_entry('exp-a', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.95, 0.92, 0.05),
-            _make_entry('exp-b', 'classify-openai', 'sample', '2026-04-02T12:00:00Z', 0.88, 0.85, 0.02),
+            _make_entry(
+                'exp-a', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.95, 0.92, 0.05, short_id=1
+            ),
+            _make_entry(
+                'exp-b', 'classify-openai', 'sample', '2026-04-02T12:00:00Z', 0.88, 0.85, 0.02, short_id=2
+            ),
         ],
     )
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['experiments', 'list'])
     assert result.exit_code == 0
-    assert 'exp-a' in result.output
-    assert 'exp-b' in result.output
+    # Full ids are hidden from rich output — only #N + impl/dataset + metrics remain.
+    assert 'exp-a' not in result.output
+    assert 'exp-b' not in result.output
     assert 'classify-anthropic' in result.output
     assert 'classify-openai' in result.output
+    # Short ids shown.
+    assert '1' in result.output
+    assert '2' in result.output
     # Metric cells rendered as percentages.
     assert '95.0%' in result.output
     assert '92.0%' in result.output
@@ -93,16 +101,20 @@ def test_experiments_list_sorted_newest_first(tmp_path: Path, monkeypatch: pytes
     _seed_index(
         tmp_path,
         [
-            _make_entry('old-exp', 'classify-anthropic', 'sample', '2026-04-01T08:00:00Z', 0.9, 0.9, 0.01),
-            _make_entry('new-exp', 'classify-anthropic', 'sample', '2026-04-10T08:00:00Z', 0.9, 0.9, 0.01),
+            _make_entry(
+                'old-exp', 'classify-anthropic', 'sample', '2026-04-01T08:00:00Z', 0.9, 0.9, 0.01, short_id=1
+            ),
+            _make_entry(
+                'new-exp', 'classify-anthropic', 'sample', '2026-04-10T08:00:00Z', 0.9, 0.9, 0.01, short_id=2
+            ),
         ],
     )
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['experiments', 'list'])
     assert result.exit_code == 0
-    # new-exp should appear first in the text output
-    assert result.output.index('new-exp') < result.output.index('old-exp')
+    # Newer experiment (by timestamp) appears first — compare via the When column contents.
+    assert result.output.index('2026-04-10') < result.output.index('2026-04-01')
 
 
 @pytest.mark.usefixtures('rich_mode')
@@ -110,16 +122,16 @@ def test_experiments_list_filter_by_impl(tmp_path: Path, monkeypatch: pytest.Mon
     _seed_index(
         tmp_path,
         [
-            _make_entry('ant', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.9, 0.9, 0.01),
-            _make_entry('oai', 'classify-openai', 'sample', '2026-04-01T12:00:00Z', 0.9, 0.9, 0.01),
+            _make_entry('ant', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.9, 0.9, 0.01, short_id=1),
+            _make_entry('oai', 'classify-openai', 'sample', '2026-04-01T12:00:00Z', 0.9, 0.9, 0.01, short_id=2),
         ],
     )
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['experiments', 'list', '--impl', 'classify-openai'])
     assert result.exit_code == 0
-    assert 'oai' in result.output
-    assert 'ant' not in result.output
+    assert 'classify-openai' in result.output
+    assert 'classify-anthropic' not in result.output
 
 
 @pytest.mark.usefixtures('rich_mode')
@@ -156,7 +168,9 @@ def test_experiments_list_filter_with_no_matches(tmp_path: Path, monkeypatch: py
 @pytest.mark.usefixtures('rich_mode')
 def test_experiments_list_limit_truncates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     entries = [
-        _make_entry(f'exp-{i}', 'classify-anthropic', 'sample', f'2026-04-{i:02d}T12:00:00Z', 0.9, 0.9, 0.01)
+        _make_entry(
+            f'exp-{i}', 'classify-anthropic', 'sample', f'2026-04-{i:02d}T12:00:00Z', 0.9, 0.9, 0.01, short_id=i
+        )
         for i in range(1, 6)
     ]
     _seed_index(tmp_path, entries)
@@ -164,10 +178,10 @@ def test_experiments_list_limit_truncates(tmp_path: Path, monkeypatch: pytest.Mo
 
     result = runner.invoke(app, ['experiments', 'list', '--limit', '2'])
     assert result.exit_code == 0
-    # Only the two newest should appear.
-    assert 'exp-5' in result.output
-    assert 'exp-4' in result.output
-    assert 'exp-1' not in result.output
+    # Only the two newest should appear — check via When column.
+    assert '2026-04-05' in result.output
+    assert '2026-04-04' in result.output
+    assert '2026-04-01' not in result.output
     # Truncation hint tells the user how many there are in total.
     assert 'Showing 2 of 5 experiments' in result.output
 
@@ -175,7 +189,9 @@ def test_experiments_list_limit_truncates(tmp_path: Path, monkeypatch: pytest.Mo
 @pytest.mark.usefixtures('rich_mode')
 def test_experiments_list_limit_zero_means_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     entries = [
-        _make_entry(f'exp-{i}', 'classify-anthropic', 'sample', f'2026-04-{i:02d}T12:00:00Z', 0.9, 0.9, 0.01)
+        _make_entry(
+            f'exp-{i}', 'classify-anthropic', 'sample', f'2026-04-{i:02d}T12:00:00Z', 0.9, 0.9, 0.01, short_id=i
+        )
         for i in range(1, 6)
     ]
     _seed_index(tmp_path, entries)
@@ -183,8 +199,9 @@ def test_experiments_list_limit_zero_means_all(tmp_path: Path, monkeypatch: pyte
 
     result = runner.invoke(app, ['experiments', 'list', '--limit', '0'])
     assert result.exit_code == 0
+    # All five experiments appear — check via their When column dates.
     for i in range(1, 6):
-        assert f'exp-{i}' in result.output
+        assert f'2026-04-{i:02d}' in result.output
 
 
 def test_experiments_list_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -233,5 +250,35 @@ def test_experiments_list_shows_short_id_column(tmp_path: Path, monkeypatch: pyt
     result = runner.invoke(app, ['experiments', 'list'])
     assert result.exit_code == 0
     assert '42' in result.output
-    assert 'with-sid' in result.output
-    assert 'no-sid' in result.output
+    # The em-dash placeholder for an entry without a short_id.
+    assert '—' in result.output
+    # Full ids are not shown in rich mode.
+    assert 'with-sid' not in result.output
+    assert 'no-sid' not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_rich_hides_full_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich mode never shows the long underscore-joined full id, even for long names."""
+    _seed_index(
+        tmp_path,
+        [
+            _make_entry(
+                'classify-anthropic_sample_20260412_235937',
+                'classify-anthropic',
+                'sample',
+                '2026-04-12T23:59:37Z',
+                0.95,
+                0.92,
+                0.05,
+                short_id=7,
+            ),
+        ],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert 'classify-anthropic_sample_20260412_235937' not in result.output
+    assert '7' in result.output
+    assert 'classify-anthropic' in result.output

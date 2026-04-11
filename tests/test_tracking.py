@@ -670,7 +670,7 @@ def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypat
 
     id_a, id_b = _setup_project_with_experiments(tmp_path)
     monkeypatch.chdir(tmp_path)
-    runner = CliRunner()
+    runner = CliRunner(env={'COLUMNS': '200'})
     result = runner.invoke(app, ['compare', id_a, id_b])
 
     assert result.exit_code == 0
@@ -683,6 +683,12 @@ def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypat
     # Regressions message still triggered (accuracy 1.0 → 0.0 and F1 1.0 → 0.0).
     assert 'Regressions detected' in result.output
     assert 'topic' in result.output
+    # Headers show the pretty refs (#N impl/dataset), not the long full ids.
+    assert '#1' in result.output
+    assert '#2' in result.output
+    assert 'classify-api/test-ds' in result.output
+    assert id_a not in result.output
+    assert id_b not in result.output
 
 
 def test_compare_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

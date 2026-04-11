@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 
+from engram.display.experiment_ref import format_ref_long
+
 console = Console()
 
 
-def print_baseline_status(baselines: dict[str, dict[str, Any]]) -> None:
-    """Print workflow baselines and per-implementation references."""
+def print_baseline_status(baselines: dict[str, dict[str, Any]], root: Path | None = None) -> None:
+    """Print workflow baselines and per-implementation references as pretty refs."""
     if not baselines:
         console.print('[dim]No baselines set.[/dim]')
         console.print('  Set one with [bold]engram baseline set <experiment-id>[/bold]')
@@ -22,7 +26,7 @@ def print_baseline_status(baselines: dict[str, dict[str, Any]]) -> None:
 
         baseline = entry.get('baseline')
         if baseline:
-            console.print(f'  baseline:   {baseline}')
+            console.print(f'  baseline:   {_pretty_ref(root, baseline)}')
         else:
             console.print('  [dim]baseline:   (none)[/dim]')
 
@@ -31,4 +35,18 @@ def print_baseline_status(baselines: dict[str, dict[str, Any]]) -> None:
             console.print('  references:')
             width = max(len(name) for name in references)
             for impl in sorted(references):
-                console.print(f'    {impl:<{width}}  {references[impl]}')
+                console.print(f'    {impl:<{width}}  {_pretty_ref(root, references[impl])}')
+
+
+def _pretty_ref(root: Path | None, experiment_id: str) -> str:
+    """Format an experiment id as ``#N impl/dataset YYYY-MM-DD HH:MM`` by reading its metadata."""
+    if root is None:
+        return experiment_id
+    results_path = root / 'experiments' / experiment_id / 'results.json'
+    if not results_path.exists():
+        return f'[dim]{experiment_id} (missing)[/dim]'
+    try:
+        metadata = json.loads(results_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return f'[dim]{experiment_id} (unreadable)[/dim]'
+    return format_ref_long(metadata)

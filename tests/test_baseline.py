@@ -128,8 +128,53 @@ def test_baseline_show_cli_populated(tmp_path: Path, monkeypatch: pytest.MonkeyP
     result = runner.invoke(app, ['baseline', 'show'])
     assert result.exit_code == 0
     assert 'classify' in result.output
+    # In the default (non-TTY) JSON mode the full ids come through verbatim.
     assert id_a in result.output
     assert id_b in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_baseline_show_rich_uses_pretty_refs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich-mode `baseline show` renders each baseline as `#N impl/dataset YYYY-MM-DD HH:MM`."""
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    set_workflow_baseline(tmp_path, 'classify', id_a)
+    set_impl_reference(tmp_path, 'classify', 'classify-api', id_b)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['baseline', 'show'])
+    assert result.exit_code == 0
+    # Pretty form shows short_id + impl/dataset + timestamp.
+    assert '#1' in result.output
+    assert '#2' in result.output
+    assert 'classify-api/test-ds' in result.output
+    # Full ids are hidden from rich output.
+    assert id_a not in result.output
+    assert id_b not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_baseline_set_rich_confirmation_uses_pretty_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich-mode `baseline set` confirmation echoes `#N impl/dataset`, not the full id."""
+    id_a, _id_b = _setup_project_with_experiments(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['baseline', 'set', id_a])
+    assert result.exit_code == 0
+    assert '#1' in result.output
+    assert 'classify-api/test-ds' in result.output
+    assert 'Set baseline for workflow classify' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_baseline_promote_rich_confirmation_uses_pretty_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich-mode `baseline promote` confirmation echoes `#N impl/dataset`, not the full id."""
+    id_a, _id_b = _setup_project_with_experiments(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['baseline', 'promote', id_a])
+    assert result.exit_code == 0
+    assert '#1' in result.output
+    assert 'classify-api/test-ds' in result.output
 
 
 # --- Compare fallback ---

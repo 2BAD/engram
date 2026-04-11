@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Annotated, Any
 
 import typer
@@ -11,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from engram.config.discovery import find_project_root
+from engram.display.experiment_ref import format_when
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.index import read_index
 
@@ -79,7 +79,6 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
 
     table = Table(title='Experiments')
     table.add_column('#', style='bold cyan', justify='right')
-    table.add_column('ID', overflow='fold')
     table.add_column('When', justify='right')
     table.add_column('Impl', overflow='fold')
     table.add_column('Dataset', overflow='fold')
@@ -92,8 +91,7 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
         short_id = entry.get('short_id')
         table.add_row(
             str(short_id) if short_id is not None else '[dim]—[/dim]',
-            entry.get('id', ''),
-            _format_timestamp(entry.get('timestamp', '')),
+            format_when(entry.get('timestamp', '')),
             entry.get('implementation', ''),
             entry.get('dataset', ''),
             _format_pct(entry.get('macro_accuracy')),
@@ -109,17 +107,6 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
         console.print(f'[dim]Showing {shown} of {total} experiments. Pass [bold]--limit 0[/bold] to show all.[/dim]')
     else:
         console.print(f'[dim]{shown} experiment(s).[/dim]')
-
-
-def _format_timestamp(raw: str) -> str:
-    """Render an ISO 8601 timestamp as `YYYY-MM-DD HH:MM`, or return it unchanged if unparseable."""
-    if not raw:
-        return ''
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return raw
-    return parsed.strftime('%Y-%m-%d %H:%M')
 
 
 def _format_pct(value: float | None) -> str:

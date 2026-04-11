@@ -9,6 +9,8 @@ from rich.console import Console
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.baseline import print_baseline_status
+from engram.display.experiment_ref import format_ref_medium
+from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import (
     load_baselines,
@@ -73,7 +75,10 @@ def set_baseline(
     """Set this experiment as the workflow baseline (the frozen anchor)."""
     root, workflow, _impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_workflow_baseline(root, workflow, experiment_id)
-    console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {experiment_id}[/green]')
+    metadata, _ = load_results(root / 'experiments' / experiment_id)
+    console.print(
+        f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]'
+    )
 
 
 @baseline_app.command('promote')
@@ -94,9 +99,10 @@ def promote_reference(
     """Promote this experiment to be its implementation's current reference."""
     root, workflow, impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_impl_reference(root, workflow, impl, experiment_id)
+    metadata, _ = load_results(root / 'experiments' / experiment_id)
     console.print(
         f'[green]Promoted [bold]{impl}[/bold] reference for workflow '
-        f'[bold]{workflow}[/bold]: {experiment_id}[/green]'
+        f'[bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]'
     )
 
 
@@ -110,6 +116,6 @@ def show_baselines() -> None:
 
     baselines = load_baselines(root)
     if get_output_mode().use_rich:
-        print_baseline_status(baselines)
+        print_baseline_status(baselines, root=root)
     else:
         print(json.dumps(baselines, indent=2))

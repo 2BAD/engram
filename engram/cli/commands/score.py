@@ -11,7 +11,9 @@ from rich.console import Console
 
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
+from engram.display.experiment_ref import format_ref_medium
 from engram.display.tables import print_eval_report
+from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.scoring.engine import score_experiment
 from engram.tracking.index import append_to_index
@@ -63,4 +65,5 @@ def score_command(
 
         append_to_index(root, report)
         if get_output_mode().use_rich:
-            console.print(f'[green]Report saved to {eval_path}[/green]')
+            metadata, _ = load_results(exp_dir)
+            console.print(f'[green]Saved eval report for {format_ref_medium(metadata)}[/green]')

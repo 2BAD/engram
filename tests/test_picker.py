@@ -237,9 +237,12 @@ def test_score_command_accepts_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     result = runner.invoke(app, ['score', '@'])
     assert result.exit_code == 0
-    assert 'exp-a' in result.output
-    # Echo: the resolver transformed '@' so a dim resolution line is printed.
+    # Echo: the resolver transformed '@' so a dim resolution line with #N impl/dataset is printed.
     assert 'resolved @' in result.output
+    assert '#1' in result.output
+    assert 'classify-api/sample' in result.output
+    # Full id is hidden from rich output.
+    assert 'exp-a' not in result.output
 
 
 def test_score_command_at_on_empty_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
