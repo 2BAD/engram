@@ -13,7 +13,7 @@ from rich.progress import Progress
 
 from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
-from engram.eval.results import save_results
+from engram.eval.results import next_short_id, save_results
 from engram.models.run import RunResult
 from engram.observability.logging import log_event
 from engram.observability.output_mode import get_output_mode
@@ -28,7 +28,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     limit: int | None = None,
     sample_seed: int = 0,
     repeats: int = 1,
-) -> str:
+) -> tuple[str, int]:
     """
     Run a workflow against a dataset, save results.
 
@@ -42,7 +42,8 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     and concurrency is not scaled to compensate. Results are stored flat with a
     `repeat_index` on each RunResult, grouped by input in the saved order.
 
-    Returns the experiment ID.
+    Returns (experiment_id, short_id). The short_id is a per-project monotonic
+    integer the user can pass to other commands in place of the full experiment id.
     """
     if repeats < 1:
         msg = f'repeats must be >= 1, got {repeats}'
@@ -70,6 +71,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
 
     timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
     experiment_id = f'{implementation_name}_{dataset_name}_{timestamp}'
+    short_id = next_short_id(root)
 
     results: list[RunResult] = []
     mode = get_output_mode()
@@ -106,13 +108,14 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     save_results(
         exp_dir,
         experiment_id=experiment_id,
+        short_id=short_id,
         implementation=implementation_name,
         dataset=dataset_name,
         results=results,
         sampling=sampling,
     )
 
-    return experiment_id
+    return experiment_id, short_id
 
 
 def _run_concurrent(

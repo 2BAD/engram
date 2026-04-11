@@ -78,7 +78,8 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
         return
 
     table = Table(title='Experiments')
-    table.add_column('ID', style='bold', overflow='fold')
+    table.add_column('#', style='bold cyan', justify='right')
+    table.add_column('ID', overflow='fold')
     table.add_column('When', justify='right')
     table.add_column('Impl', overflow='fold')
     table.add_column('Dataset', overflow='fold')
@@ -88,7 +89,9 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
     table.add_column('N', justify='right')
 
     for entry in entries:
+        short_id = entry.get('short_id')
         table.add_row(
+            str(short_id) if short_id is not None else '[dim]—[/dim]',
             entry.get('id', ''),
             _format_timestamp(entry.get('timestamp', '')),
             entry.get('implementation', ''),

@@ -140,7 +140,7 @@ def test_score_command_non_tty_exits_with_hint(tmp_path: Path, monkeypatch: pyte
     assert 'pass the experiment ID' in result.output
 
 
-def _setup_minimal_scored_project(root: Path, exp_id: str) -> None:
+def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) -> None:
     """Write a project with one workflow, one impl, one dataset, and one runnable experiment."""
     (root / 'engram.yaml').write_text('name: test\n')
     wf = root / 'workflows' / 'classify'
@@ -169,6 +169,7 @@ def _setup_minimal_scored_project(root: Path, exp_id: str) -> None:
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': short_id,
                 'implementation': 'classify-api',
                 'dataset': 'sample',
                 'timestamp': '2026-04-10T00:00:00',
@@ -193,6 +194,7 @@ def _setup_minimal_scored_project(root: Path, exp_id: str) -> None:
     (root / 'experiments' / 'experiments.jsonl').write_text(
         json.dumps(
             {
+                'short_id': short_id,
                 'id': exp_id,
                 'implementation': 'classify-api',
                 'dataset': 'sample',
@@ -205,3 +207,23 @@ def _setup_minimal_scored_project(root: Path, exp_id: str) -> None:
         )
         + '\n'
     )
+
+
+def test_score_command_accepts_short_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`engram score 1` resolves the short_id through the index and scores the matching experiment."""
+    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['score', '1'])
+    assert result.exit_code == 0
+    assert 'exp-a' in result.output
+
+
+def test_score_command_rejects_unknown_short_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """An unknown short_id exits with a clear 'No experiment found' message."""
+    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['score', '99'])
+    assert result.exit_code == 1
+    assert 'No experiment found with short_id #99' in result.output

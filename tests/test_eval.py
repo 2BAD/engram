@@ -8,7 +8,7 @@ import pytest
 import engram.eval.loop as loop_mod
 from engram.datasets.loader import load_dataset_inputs, load_dataset_labels
 from engram.eval.loop import run_eval as _run
-from engram.eval.results import load_results, save_results
+from engram.eval.results import load_results, next_short_id, save_results
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.implementation import ImplementationConfig
 from engram.models.run import RunResult, TokenUsage
@@ -96,7 +96,7 @@ def test_save_and_load_results(tmp_path: Path):
         ),
     ]
 
-    save_results(exp_dir, 'test-exp', 'classify-api', 'labeled-small', results)
+    save_results(exp_dir, 'test-exp', 1, 'classify-api', 'labeled-small', results)
 
     assert (exp_dir / 'results.json').exists()
 
@@ -116,10 +116,66 @@ def test_save_results_with_sampling(tmp_path: Path):
     exp_dir.mkdir(parents=True)
 
     sampling = {'limit': 2, 'sample_seed': 7, 'source_total': 10}
-    save_results(exp_dir, 'sampled-exp', 'impl', 'ds', [], sampling=sampling)
+    save_results(exp_dir, 'sampled-exp', 1, 'impl', 'ds', [], sampling=sampling)
 
     metadata, _ = load_results(exp_dir)
     assert metadata['sampling'] == sampling
+
+
+# --- short_id assignment ---
+
+
+def _write_results_with_short_id(root: Path, exp_id: str, short_id: int | None) -> None:
+    """Write a minimal results.json under experiments/<exp_id>/ with the given short_id."""
+    exp_dir = root / 'experiments' / exp_id
+    exp_dir.mkdir(parents=True)
+    data: dict = {
+        'experiment_id': exp_id,
+        'implementation': 'impl',
+        'dataset': 'ds',
+        'timestamp': '2026-04-04T12:00:00Z',
+        'total': 0,
+        'succeeded': 0,
+        'failed': 0,
+        'results': [],
+    }
+    if short_id is not None:
+        data['short_id'] = short_id
+    (exp_dir / 'results.json').write_text(json.dumps(data))
+
+
+def test_next_short_id_starts_at_one_for_empty_project(tmp_path: Path):
+    """A project with no experiments dir returns short_id 1."""
+    assert next_short_id(tmp_path) == 1
+
+
+def test_next_short_id_starts_at_one_for_empty_experiments_dir(tmp_path: Path):
+    """A project with an empty experiments dir also starts at 1."""
+    (tmp_path / 'experiments').mkdir()
+    assert next_short_id(tmp_path) == 1
+
+
+def test_next_short_id_returns_max_plus_one(tmp_path: Path):
+    """With existing runs carrying short_ids, returns max + 1."""
+    _write_results_with_short_id(tmp_path, 'exp-a', 1)
+    _write_results_with_short_id(tmp_path, 'exp-b', 5)
+    _write_results_with_short_id(tmp_path, 'exp-c', 3)
+    assert next_short_id(tmp_path) == 6
+
+
+def test_next_short_id_ignores_runs_without_short_id(tmp_path: Path):
+    """Pre-schema runs without short_id are skipped rather than renumbered."""
+    _write_results_with_short_id(tmp_path, 'legacy', None)
+    _write_results_with_short_id(tmp_path, 'new', 1)
+    assert next_short_id(tmp_path) == 2
+
+
+def test_next_short_id_skips_non_directories(tmp_path: Path):
+    """Stray files in experiments/ don't break the scan."""
+    (tmp_path / 'experiments').mkdir()
+    (tmp_path / 'experiments' / 'experiments.jsonl').write_text('{}\n')
+    _write_results_with_short_id(tmp_path, 'exp-a', 2)
+    assert next_short_id(tmp_path) == 3
 
 
 # --- Sampling ---

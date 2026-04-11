@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from engram.cli.picker import pick_experiment_id
+from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.tables import print_eval_report
 from engram.observability.output_mode import get_output_mode
@@ -32,8 +32,7 @@ def score_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    if experiment_id is None:
-        experiment_id = pick_experiment_id(root)
+    experiment_id = pick_experiment_id(root) if experiment_id is None else resolve_experiment_arg(root, experiment_id)
 
     exp_dir = root / 'experiments' / experiment_id
     if not exp_dir.exists():

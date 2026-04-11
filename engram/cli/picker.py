@@ -10,7 +10,7 @@ import typer
 from rich.console import Console
 from rich.prompt import IntPrompt
 
-from engram.tracking.index import read_index
+from engram.tracking.index import read_index, resolve_experiment_id
 
 console = Console()
 
@@ -20,6 +20,21 @@ _DEFAULT_LIMIT = 10
 def _is_interactive() -> bool:
     """Whether stdin is a TTY. Factored out so tests can patch it without fighting CliRunner."""
     return sys.stdin.isatty()
+
+
+def resolve_experiment_arg(root: Path, arg: str) -> str:
+    """
+    Resolve a command-line experiment argument (short_id or full id) to a full experiment id.
+
+    Wraps :func:`engram.tracking.index.resolve_experiment_id` with the CLI error
+    contract: on ``FileNotFoundError``, print a red message and exit 1 instead of
+    letting the traceback bubble up.
+    """
+    try:
+        return resolve_experiment_id(root, arg)
+    except FileNotFoundError as e:
+        console.print(f'[red]{e}[/red]')
+        raise typer.Exit(1) from None
 
 
 def pick_experiment_id(root: Path, limit: int = _DEFAULT_LIMIT) -> str:

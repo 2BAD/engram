@@ -132,16 +132,18 @@ def test_run_command_prints_next_step_hint(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
     monkeypatch.setattr(
         'engram.cli.commands.run.run_eval',
-        lambda *_args, **_kwargs: 'classify-anthropic_sample_fake-id',
+        lambda *_args, **_kwargs: ('classify-anthropic_sample_fake-id', 7),
     )
 
     result = runner.invoke(app, ['run', 'classify-anthropic', '--dataset', 'sample'])
 
     assert result.exit_code == 0
     assert 'Experiment complete' in result.output
+    # Output shows the short_id prominently and the full experiment id in parens.
+    assert '#7' in result.output
     assert 'classify-anthropic_sample_fake-id' in result.output
-    # Hint block names both the score command (with the exact ID) and the list command.
-    assert 'engram score classify-anthropic_sample_fake-id --save' in result.output
+    # Hint block names the score command with the short_id and the list command.
+    assert 'engram score 7 --save' in result.output
     assert 'engram experiments list' in result.output
 
 

@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from engram.cli.picker import pick_experiment_id
+from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
@@ -99,8 +99,11 @@ def compare_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    if experiment_a is None:
-        experiment_a = pick_experiment_id(root)
+    experiment_a = pick_experiment_id(root) if experiment_a is None else resolve_experiment_arg(root, experiment_a)
+    if experiment_b is not None:
+        experiment_b = resolve_experiment_arg(root, experiment_b)
+    if against is not None:
+        against = resolve_experiment_arg(root, against)
 
     from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
 

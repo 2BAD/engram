@@ -7,16 +7,24 @@ import pytest
 
 from engram.models.scoring import EvalReport, FieldMetrics
 from engram.tracking.comparison import FieldDelta, compare_experiments, diff_config_snapshots
-from engram.tracking.index import append_to_index, read_index
+from engram.tracking.index import append_to_index, read_index, resolve_experiment_id
 
 
-def _setup_experiment(root: Path, experiment_id: str, impl: str, dataset: str, topic_output: str) -> None:
+def _setup_experiment(
+    root: Path,
+    experiment_id: str,
+    impl: str,
+    dataset: str,
+    topic_output: str,
+    short_id: int = 1,
+) -> None:
     """Create a minimal experiment with results and config snapshot."""
     exp_dir = root / 'experiments' / experiment_id
     exp_dir.mkdir(parents=True)
 
     results_data = {
         'experiment_id': experiment_id,
+        'short_id': short_id,
         'implementation': impl,
         'dataset': dataset,
         'timestamp': '2026-04-04T12:00:00Z',
@@ -72,8 +80,8 @@ def _setup_project_with_experiments(tmp_path: Path) -> tuple[str, str]:
     id_a = 'classify-api_test-ds_20260404_120000'
     id_b = 'classify-api_test-ds_20260404_130000'
 
-    _setup_experiment(tmp_path, id_a, 'classify-api', 'test-ds', 'A')
-    _setup_experiment(tmp_path, id_b, 'classify-api', 'test-ds', 'B')
+    _setup_experiment(tmp_path, id_a, 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, id_b, 'classify-api', 'test-ds', 'B', short_id=2)
 
     return id_a, id_b
 
@@ -92,6 +100,7 @@ def test_append_and_read_index(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': 1,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -140,13 +149,60 @@ def test_read_index_empty(tmp_path: Path):
     assert read_index(tmp_path) == []
 
 
+def test_append_to_index_records_short_id(tmp_path: Path):
+    """append_to_index copies short_id from results.json metadata into the index row."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=42)
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-a', field_metrics=[]))
+    assert read_index(tmp_path)[0]['short_id'] == 42
+
+
+# --- resolve_experiment_id ---
+
+
+def test_resolve_non_numeric_returns_input_unchanged(tmp_path: Path):
+    """Anything not a pure integer string passes through untouched — it's a full id."""
+    (tmp_path / 'experiments').mkdir()
+    assert resolve_experiment_id(tmp_path, 'classify-anthropic_sample_20260412_123456') == (
+        'classify-anthropic_sample_20260412_123456'
+    )
+
+
+def test_resolve_short_id_against_index(tmp_path: Path):
+    """Numeric input hits the index first and returns the matching full id."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B', short_id=2)
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-a', field_metrics=[]))
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-b', field_metrics=[]))
+
+    assert resolve_experiment_id(tmp_path, '2') == 'exp-b'
+
+
+def test_resolve_short_id_falls_back_to_experiments_dir(tmp_path: Path):
+    """Unscored runs not in the index are still reachable by short_id via the dir scan."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-unscored', 'classify-api', 'test-ds', 'A', short_id=7)
+    # Note: no append_to_index — this experiment has never been scored.
+    assert resolve_experiment_id(tmp_path, '7') == 'exp-unscored'
+
+
+def test_resolve_short_id_not_found(tmp_path: Path):
+    """Looking up a short_id that doesn't exist raises FileNotFoundError with a clear message."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
+
+    with pytest.raises(FileNotFoundError, match='No experiment found with short_id #99'):
+        resolve_experiment_id(tmp_path, '99')
+
+
 def test_append_to_index_upserts_rescored_experiment(tmp_path: Path):
     """Re-scoring an experiment replaces its entry in place, not as a duplicate."""
     (tmp_path / 'experiments').mkdir()
 
-    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A')
-    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B')
-    _setup_experiment(tmp_path, 'exp-c', 'classify-api', 'test-ds', 'A')
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B', short_id=2)
+    _setup_experiment(tmp_path, 'exp-c', 'classify-api', 'test-ds', 'A', short_id=3)
 
     def _report(exp_id: str, accuracy: float) -> EvalReport:
         return EvalReport(
@@ -186,6 +242,7 @@ def test_index_records_avg_output_tokens(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': 7,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -243,6 +300,7 @@ def test_index_omits_avg_output_tokens_when_no_data(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': 8,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -271,6 +329,7 @@ def test_index_records_repeat_aware_metrics(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': 9,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -334,6 +393,7 @@ def test_index_omits_repeat_aware_metrics_for_single_repeat(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
+                'short_id': 10,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',

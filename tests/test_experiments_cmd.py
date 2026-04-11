@@ -28,8 +28,9 @@ def _make_entry(  # noqa: PLR0913 — test helper; every parameter is a meaningf
     f1: float,
     cost: float,
     matched: int = 10,
+    short_id: int | None = None,
 ) -> dict:
-    return {
+    entry = {
         'id': exp_id,
         'implementation': impl,
         'dataset': dataset,
@@ -44,6 +45,9 @@ def _make_entry(  # noqa: PLR0913 — test helper; every parameter is a meaningf
         'field_f1': {'topic': f1},
         'cost': {'total_usd': cost, 'avg_usd': cost / 10},
     }
+    if short_id is not None:
+        entry['short_id'] = short_id
+    return entry
 
 
 @pytest.mark.usefixtures('rich_mode')
@@ -212,3 +216,22 @@ def test_experiments_list_no_project(tmp_path: Path, monkeypatch: pytest.MonkeyP
     result = runner.invoke(app, ['experiments', 'list'])
     assert result.exit_code == 1
     assert 'No engram.yaml found' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_shows_short_id_column(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The `#` column renders the short_id when present, and an em dash when missing."""
+    _seed_index(
+        tmp_path,
+        [
+            _make_entry('with-sid', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=42),
+            _make_entry('no-sid', 'impl', 'sample', '2026-04-01T12:00:00Z', 0.8, 0.8, 0.02),
+        ],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert '42' in result.output
+    assert 'with-sid' in result.output
+    assert 'no-sid' in result.output

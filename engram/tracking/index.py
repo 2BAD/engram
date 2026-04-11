@@ -31,6 +31,7 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     macro_f1 = sum(fm.f1 for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
 
     summary = {
+        'short_id': metadata['short_id'],
         'id': report.experiment_id,
         'implementation': metadata['implementation'],
         'dataset': metadata['dataset'],
@@ -109,3 +110,36 @@ def read_index(root: Path) -> list[dict[str, Any]]:
         if line.strip():
             entries.append(json.loads(line))
     return entries
+
+
+def resolve_experiment_id(root: Path, arg: str) -> str:
+    """
+    Resolve a user-provided experiment reference to a full experiment id.
+
+    A purely numeric ``arg`` is treated as a ``short_id`` lookup: the index is
+    checked first (scored experiments), then every ``experiments/*/results.json``
+    as a fallback so runs that haven't been scored yet are still reachable by
+    number. Anything else is returned unchanged.
+    """
+    if not arg.isdigit():
+        return arg
+    target = int(arg)
+    for entry in read_index(root):
+        if entry.get('short_id') == target:
+            return entry['id']
+    experiments_dir = root / 'experiments'
+    if experiments_dir.exists():
+        for exp_dir in experiments_dir.iterdir():
+            if not exp_dir.is_dir():
+                continue
+            results_file = exp_dir / 'results.json'
+            if not results_file.exists():
+                continue
+            try:
+                data = json.loads(results_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            if data.get('short_id') == target:
+                return data['experiment_id']
+    msg = f'No experiment found with short_id #{target}'
+    raise FileNotFoundError(msg)

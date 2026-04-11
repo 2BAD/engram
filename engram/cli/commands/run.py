@@ -61,7 +61,7 @@ def run_command(
             console.print(f'  [cyan]export {var}=...[/cyan]')
         raise typer.Exit(1)
 
-    experiment_id = run_eval(
+    experiment_id, short_id = run_eval(
         root,
         implementation,
         dataset,
@@ -70,8 +70,8 @@ def run_command(
         sample_seed=sample_seed,
         repeats=repeats,
     )
-    console.print(f'[green]Experiment complete:[/green] {experiment_id}')
+    console.print(f'[green]Experiment complete:[/green] #{short_id} [dim]({experiment_id})[/dim]')
     console.print()
     console.print('[bold]Next steps:[/bold]')
-    console.print(f'  Score the run:   [cyan]engram score {experiment_id} --save[/cyan]')
+    console.print(f'  Score the run:   [cyan]engram score {short_id} --save[/cyan]')
     console.print('  List past runs:  [cyan]engram experiments list[/cyan]')
