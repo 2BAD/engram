@@ -7,7 +7,7 @@ import pytest
 
 from engram.models.scoring import EvalReport, FieldMetrics
 from engram.tracking.comparison import FieldDelta, compare_experiments, diff_config_snapshots
-from engram.tracking.index import append_to_index, read_index, resolve_experiment_id
+from engram.tracking.index import append_to_index, list_experiments, read_index, resolve_experiment_id
 
 
 def _setup_experiment(
@@ -194,6 +194,131 @@ def test_resolve_short_id_not_found(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError, match='No experiment found with short_id #99'):
         resolve_experiment_id(tmp_path, '99')
+
+
+# --- @ / @-N recency resolution ---
+
+
+def _setup_experiment_with_timestamp(
+    root: Path,
+    experiment_id: str,
+    impl: str,
+    dataset: str,
+    timestamp: str,
+    short_id: int,
+) -> None:
+    """Create a minimal results.json with a specific timestamp for recency tests."""
+    exp_dir = root / 'experiments' / experiment_id
+    exp_dir.mkdir(parents=True)
+    (exp_dir / 'results.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': experiment_id,
+                'short_id': short_id,
+                'implementation': impl,
+                'dataset': dataset,
+                'timestamp': timestamp,
+                'total': 0,
+                'succeeded': 0,
+                'failed': 0,
+                'results': [],
+            }
+        )
+    )
+
+
+def test_list_experiments_sorted_newest_first(tmp_path: Path):
+    """list_experiments returns all experiments sorted by timestamp descending."""
+    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'mid', 'a', 'ds', '2026-04-05T00:00:00', 3)
+
+    entries = list_experiments(tmp_path)
+    assert [e['experiment_id'] for e in entries] == ['new', 'mid', 'old']
+
+
+def test_list_experiments_filters(tmp_path: Path):
+    """impl and dataset filters narrow the result set by exact match."""
+    _setup_experiment_with_timestamp(tmp_path, 'ant-sample', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'oai-sample', 'openai', 'sample', '2026-04-02T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'ant-full', 'anthropic', 'full', '2026-04-03T00:00:00', 3)
+
+    ant_only = list_experiments(tmp_path, impl='anthropic')
+    assert [e['experiment_id'] for e in ant_only] == ['ant-full', 'ant-sample']
+
+    sample_only = list_experiments(tmp_path, dataset='sample')
+    assert [e['experiment_id'] for e in sample_only] == ['oai-sample', 'ant-sample']
+
+    ant_sample = list_experiments(tmp_path, impl='anthropic', dataset='sample')
+    assert [e['experiment_id'] for e in ant_sample] == ['ant-sample']
+
+
+def test_resolve_at_returns_newest(tmp_path: Path):
+    """@ returns the single most recent experiment by timestamp."""
+    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00', 2)
+
+    assert resolve_experiment_id(tmp_path, '@') == 'new'
+
+
+def test_resolve_at_dash_n_walks_back(tmp_path: Path):
+    """@-N returns the (N+1)th most recent experiment (0-indexed offset from the newest)."""
+    _setup_experiment_with_timestamp(tmp_path, 'third', 'a', 'ds', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'second', 'a', 'ds', '2026-04-02T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'first', 'a', 'ds', '2026-04-03T00:00:00', 3)
+
+    assert resolve_experiment_id(tmp_path, '@') == 'first'
+    assert resolve_experiment_id(tmp_path, '@-0') == 'first'  # @ == @-0
+    assert resolve_experiment_id(tmp_path, '@-1') == 'second'
+    assert resolve_experiment_id(tmp_path, '@-2') == 'third'
+
+
+def test_resolve_at_with_impl_filter(tmp_path: Path):
+    """@ with impl filter returns the newest matching that implementation, ignoring others."""
+    _setup_experiment_with_timestamp(tmp_path, 'ant-old', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'oai-newest', 'openai', 'sample', '2026-04-10T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'ant-new', 'anthropic', 'sample', '2026-04-05T00:00:00', 3)
+
+    assert resolve_experiment_id(tmp_path, '@', impl='anthropic') == 'ant-new'
+    assert resolve_experiment_id(tmp_path, '@', impl='openai') == 'oai-newest'
+
+
+def test_resolve_at_with_dataset_filter(tmp_path: Path):
+    """@ with dataset filter narrows to that dataset only."""
+    _setup_experiment_with_timestamp(tmp_path, 'sample-old', 'a', 'sample', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'full-new', 'a', 'full', '2026-04-10T00:00:00', 2)
+
+    assert resolve_experiment_id(tmp_path, '@', dataset='sample') == 'sample-old'
+
+
+def test_resolve_at_empty_project_errors(tmp_path: Path):
+    """@ on a project with zero experiments exits with a clear message."""
+    with pytest.raises(FileNotFoundError, match=r'No experiments.*to resolve @'):
+        resolve_experiment_id(tmp_path, '@')
+
+
+def test_resolve_at_out_of_range_errors(tmp_path: Path):
+    """@-N beyond the available experiments reports the real count in the error."""
+    _setup_experiment_with_timestamp(tmp_path, 'only', 'a', 'ds', '2026-04-01T00:00:00', 1)
+
+    with pytest.raises(FileNotFoundError, match='@-5 is out of range: only 1 experiment'):
+        resolve_experiment_id(tmp_path, '@-5')
+
+
+def test_resolve_at_empty_scope_mentions_filters(tmp_path: Path):
+    """When filters knock out every experiment, the error names the filters so the user can debug."""
+    _setup_experiment_with_timestamp(tmp_path, 'exists', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+
+    with pytest.raises(FileNotFoundError, match=r'impl=openai'):
+        resolve_experiment_id(tmp_path, '@', impl='openai')
+
+
+def test_resolve_short_id_ignores_impl_filter(tmp_path: Path):
+    """short_id is globally unique, so impl/dataset filters are ignored for numeric lookups."""
+    _setup_experiment_with_timestamp(tmp_path, 'exp-ant', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+
+    # The lookup succeeds even though the filter would exclude the only match.
+    assert resolve_experiment_id(tmp_path, '1', impl='openai') == 'exp-ant'
 
 
 def test_append_to_index_upserts_rescored_experiment(tmp_path: Path):

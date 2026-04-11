@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,8 @@ from engram.eval.results import load_results
 
 if TYPE_CHECKING:
     from engram.models.scoring import EvalReport
+
+_AT_PATTERN = re.compile(r'^@(?:-(\d+))?$')
 
 
 def append_to_index(root: Path, report: EvalReport) -> None:
@@ -112,34 +115,94 @@ def read_index(root: Path) -> list[dict[str, Any]]:
     return entries
 
 
-def resolve_experiment_id(root: Path, arg: str) -> str:
+def list_experiments(
+    root: Path,
+    impl: str | None = None,
+    dataset: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Return every experiment in the project (scored or not), sorted newest-first.
+
+    Reads ``experiments/*/results.json`` directly so unscored runs are still
+    included — the index only covers scored runs. ``impl`` and ``dataset``
+    filter by exact match when provided.
+    """
+    experiments_dir = root / 'experiments'
+    if not experiments_dir.exists():
+        return []
+    entries: list[dict[str, Any]] = []
+    for exp_dir in experiments_dir.iterdir():
+        if not exp_dir.is_dir():
+            continue
+        results_file = exp_dir / 'results.json'
+        if not results_file.exists():
+            continue
+        try:
+            data = json.loads(results_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if impl is not None and data.get('implementation') != impl:
+            continue
+        if dataset is not None and data.get('dataset') != dataset:
+            continue
+        entries.append(data)
+    entries.sort(key=lambda e: e.get('timestamp', ''), reverse=True)
+    return entries
+
+
+def resolve_experiment_id(
+    root: Path,
+    arg: str,
+    impl: str | None = None,
+    dataset: str | None = None,
+) -> str:
     """
     Resolve a user-provided experiment reference to a full experiment id.
 
-    A purely numeric ``arg`` is treated as a ``short_id`` lookup: the index is
-    checked first (scored experiments), then every ``experiments/*/results.json``
-    as a fallback so runs that haven't been scored yet are still reachable by
-    number. Anything else is returned unchanged.
+    Three input shapes are recognised:
+
+    - ``@`` or ``@-N`` selects by recency: ``@`` is the newest experiment,
+      ``@-1`` is one step older, and so on. The ``impl`` and ``dataset``
+      filters narrow the recency list before the Nth-back lookup.
+    - A pure integer is a ``short_id`` lookup — index first, then a scan of
+      every ``experiments/*/results.json`` so unscored runs stay reachable.
+      Short ids are globally unique, so ``impl`` / ``dataset`` filters are
+      ignored here.
+    - Anything else is returned unchanged (full experiment id).
     """
-    if not arg.isdigit():
-        return arg
-    target = int(arg)
-    for entry in read_index(root):
-        if entry.get('short_id') == target:
-            return entry['id']
-    experiments_dir = root / 'experiments'
-    if experiments_dir.exists():
-        for exp_dir in experiments_dir.iterdir():
-            if not exp_dir.is_dir():
-                continue
-            results_file = exp_dir / 'results.json'
-            if not results_file.exists():
-                continue
-            try:
-                data = json.loads(results_file.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            if data.get('short_id') == target:
-                return data['experiment_id']
-    msg = f'No experiment found with short_id #{target}'
-    raise FileNotFoundError(msg)
+    at_match = _AT_PATTERN.match(arg)
+    if at_match:
+        n = int(at_match.group(1) or 0)
+        entries = list_experiments(root, impl=impl, dataset=dataset)
+        if not entries:
+            scope = _format_scope(impl, dataset)
+            msg = f'No experiments{scope} to resolve {arg}'
+            raise FileNotFoundError(msg)
+        if n >= len(entries):
+            scope = _format_scope(impl, dataset)
+            msg = f'{arg} is out of range: only {len(entries)} experiment(s){scope}'
+            raise FileNotFoundError(msg)
+        return entries[n]['experiment_id']
+
+    if arg.isdigit():
+        target = int(arg)
+        for entry in read_index(root):
+            if entry.get('short_id') == target:
+                return entry['id']
+        for entry in list_experiments(root):
+            if entry.get('short_id') == target:
+                return entry['experiment_id']
+        msg = f'No experiment found with short_id #{target}'
+        raise FileNotFoundError(msg)
+
+    return arg
+
+
+def _format_scope(impl: str | None, dataset: str | None) -> str:
+    """Render a human-readable '(for impl=X, dataset=Y)' clause for error messages."""
+    parts = []
+    if impl is not None:
+        parts.append(f'impl={impl}')
+    if dataset is not None:
+        parts.append(f'dataset={dataset}')
+    return f' (for {", ".join(parts)})' if parts else ''

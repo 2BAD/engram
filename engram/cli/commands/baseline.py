@@ -26,14 +26,22 @@ baseline_app = typer.Typer(
 )
 
 
-def _resolve(experiment_id: str | None) -> tuple:
+def _resolve(
+    experiment_id: str | None,
+    impl_filter: str | None = None,
+    dataset_filter: str | None = None,
+) -> tuple:
     """Find the project root and resolve the experiment's (workflow, implementation); picker runs when `experiment_id` is None."""  # noqa: E501
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    experiment_id = pick_experiment_id(root) if experiment_id is None else resolve_experiment_arg(root, experiment_id)
+    experiment_id = (
+        pick_experiment_id(root)
+        if experiment_id is None
+        else resolve_experiment_arg(root, experiment_id, impl=impl_filter, dataset=dataset_filter)
+    )
 
     try:
         workflow, implementation = lookup_experiment(root, experiment_id)
@@ -51,11 +59,19 @@ def _resolve(experiment_id: str | None) -> tuple:
 def set_baseline(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID to mark as the workflow baseline. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively.'),
+    ] = None,
+    implementation: Annotated[
+        str | None,
+        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
     ] = None,
 ) -> None:
     """Set this experiment as the workflow baseline (the frozen anchor)."""
-    root, workflow, _impl, experiment_id = _resolve(experiment_id)
+    root, workflow, _impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_workflow_baseline(root, workflow, experiment_id)
     console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {experiment_id}[/green]')
 
@@ -64,14 +80,22 @@ def set_baseline(
 def promote_reference(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID to promote as its implementation reference. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively.'),
+    ] = None,
+    implementation: Annotated[
+        str | None,
+        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
     ] = None,
 ) -> None:
     """Promote this experiment to be its implementation's current reference."""
-    root, workflow, implementation, experiment_id = _resolve(experiment_id)
-    set_impl_reference(root, workflow, implementation, experiment_id)
+    root, workflow, impl, experiment_id = _resolve(experiment_id, implementation, dataset)
+    set_impl_reference(root, workflow, impl, experiment_id)
     console.print(
-        f'[green]Promoted [bold]{implementation}[/bold] reference for workflow '
+        f'[green]Promoted [bold]{impl}[/bold] reference for workflow '
         f'[bold]{workflow}[/bold]: {experiment_id}[/green]'
     )
 

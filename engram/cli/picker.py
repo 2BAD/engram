@@ -22,19 +22,29 @@ def _is_interactive() -> bool:
     return sys.stdin.isatty()
 
 
-def resolve_experiment_arg(root: Path, arg: str) -> str:
+def resolve_experiment_arg(
+    root: Path,
+    arg: str,
+    impl: str | None = None,
+    dataset: str | None = None,
+) -> str:
     """
-    Resolve a command-line experiment argument (short_id or full id) to a full experiment id.
+    Resolve a command-line experiment argument to a full experiment id.
 
-    Wraps :func:`engram.tracking.index.resolve_experiment_id` with the CLI error
-    contract: on ``FileNotFoundError``, print a red message and exit 1 instead of
-    letting the traceback bubble up.
+    Wraps :func:`engram.tracking.index.resolve_experiment_id` with the CLI
+    error contract: on ``FileNotFoundError``, print a red message and exit 1
+    instead of letting the traceback bubble up. When the input was shortened
+    (``@``, ``@-N``, or a short id) the resolved full id is echoed in dim
+    style so lookups are never silent; a full-id pass-through stays quiet.
     """
     try:
-        return resolve_experiment_id(root, arg)
+        resolved = resolve_experiment_id(root, arg, impl=impl, dataset=dataset)
     except FileNotFoundError as e:
         console.print(f'[red]{e}[/red]')
         raise typer.Exit(1) from None
+    if resolved != arg:
+        console.print(f'[dim]resolved {arg} → {resolved}[/dim]')
+    return resolved
 
 
 def pick_experiment_id(root: Path, limit: int = _DEFAULT_LIMIT) -> str:

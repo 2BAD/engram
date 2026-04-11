@@ -227,3 +227,38 @@ def test_score_command_rejects_unknown_short_id(tmp_path: Path, monkeypatch: pyt
     result = runner.invoke(app, ['score', '99'])
     assert result.exit_code == 1
     assert 'No experiment found with short_id #99' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_accepts_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`engram score @` resolves to the most recent experiment and scores it."""
+    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['score', '@'])
+    assert result.exit_code == 0
+    assert 'exp-a' in result.output
+    # Echo: the resolver transformed '@' so a dim resolution line is printed.
+    assert 'resolved @' in result.output
+
+
+def test_score_command_at_on_empty_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """`engram score @` on a project with no experiments exits with a clear message."""
+    (tmp_path / 'engram.yaml').write_text('name: test\n')
+    (tmp_path / 'experiments').mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['score', '@'])
+    assert result.exit_code == 1
+    assert 'No experiments' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_full_id_does_not_echo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Passing a full experiment id is a pass-through — no 'resolved' echo."""
+    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['score', 'exp-a'])
+    assert result.exit_code == 0
+    assert 'resolved' not in result.output

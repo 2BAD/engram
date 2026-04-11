@@ -22,9 +22,17 @@ console = Console()
 def score_command(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID to score. Omit to pick interactively from recent runs.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively from recent runs.'),
     ] = None,
     save: Annotated[bool, typer.Option('--save', help='Save report and update experiment index')] = False,
+    implementation: Annotated[
+        str | None,
+        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
+    ] = None,
 ) -> None:
     """Score experiment results against dataset labels."""
     root = find_project_root()
@@ -32,7 +40,11 @@ def score_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    experiment_id = pick_experiment_id(root) if experiment_id is None else resolve_experiment_arg(root, experiment_id)
+    experiment_id = (
+        pick_experiment_id(root)
+        if experiment_id is None
+        else resolve_experiment_arg(root, experiment_id, impl=implementation, dataset=dataset)
+    )
 
     exp_dir = root / 'experiments' / experiment_id
     if not exp_dir.exists():

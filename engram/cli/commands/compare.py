@@ -81,7 +81,7 @@ def _resolve_compare_pair(
 def compare_command(
     experiment_a: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID to compare. Omit to pick interactively from recent runs.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively from recent runs.'),
     ] = None,
     experiment_b: Annotated[
         str | None,
@@ -92,6 +92,14 @@ def compare_command(
         typer.Option('--against', help='Compare against this specific experiment instead of the workflow baseline'),
     ] = None,
     prompts: Annotated[bool, typer.Option('--prompts', help='Show full prompt diffs')] = False,
+    implementation: Annotated[
+        str | None,
+        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
+    ] = None,
 ) -> None:
     """Compare two experiments: accuracy deltas, cost, config diffs."""
     root = find_project_root()
@@ -99,11 +107,15 @@ def compare_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    experiment_a = pick_experiment_id(root) if experiment_a is None else resolve_experiment_arg(root, experiment_a)
+    experiment_a = (
+        pick_experiment_id(root)
+        if experiment_a is None
+        else resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
+    )
     if experiment_b is not None:
-        experiment_b = resolve_experiment_arg(root, experiment_b)
+        experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
     if against is not None:
-        against = resolve_experiment_arg(root, against)
+        against = resolve_experiment_arg(root, against, impl=implementation, dataset=dataset)
 
     from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
 
