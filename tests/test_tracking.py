@@ -339,7 +339,7 @@ def test_format_ref_medium_with_label():
     from engram.display.experiment_ref import format_ref_medium  # noqa: PLC0415
 
     entry = {'short_id': 7, 'implementation': 'anthropic', 'dataset': 'sample', 'label': 'prompt-v2'}
-    assert format_ref_medium(entry) == '#7 anthropic/sample \\[prompt-v2]'
+    assert format_ref_medium(entry) == '#7 anthropic/sample [prompt-v2]'
 
 
 def test_format_ref_medium_without_label():
@@ -350,13 +350,13 @@ def test_format_ref_medium_without_label():
     assert format_ref_medium(entry) == '#7 anthropic/sample'
 
 
-def test_format_ref_medium_escapes_rich_markup_in_label():
-    """Labels containing Rich markup characters are escaped so they render literally."""
+def test_format_ref_medium_returns_plain_text_with_markup_chars():
+    """Labels containing Rich markup characters are returned as plain text (escaping is caller's job)."""
     from engram.display.experiment_ref import format_ref_medium  # noqa: PLC0415
 
     entry = {'short_id': 1, 'implementation': 'a', 'dataset': 'b', 'label': '[bold]test'}
     ref = format_ref_medium(entry)
-    assert '\\[bold]' in ref
+    assert '[bold]test' in ref
 
 
 def test_resolve_short_id_ignores_impl_filter(tmp_path: Path):

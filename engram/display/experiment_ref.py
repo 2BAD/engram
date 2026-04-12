@@ -21,12 +21,17 @@ def format_ref_short(entry: dict[str, Any]) -> str:
 
 
 def format_ref_medium(entry: dict[str, Any]) -> str:
-    """Render ``#N impl/dataset`` (or ``#N impl/dataset [label]``) for inline messages, headers, and echoes."""
+    """
+    Render ``#N impl/dataset`` (or ``#N impl/dataset [label]``).
+
+    Returns plain text. Callers that pass this to Rich console should wrap with
+    ``rich.markup.escape()`` if the string will be embedded in markup.
+    """
     impl = entry.get('implementation', '?')
     dataset = entry.get('dataset', '?')
     label = entry.get('label')
     base = f'{format_ref_short(entry)} {impl}/{dataset}'
-    return f'{base} \\[{_escape_label(label)}]' if label else base
+    return f'{base} [{label}]' if label else base
 
 
 def format_ref_long(entry: dict[str, Any]) -> str:
@@ -34,11 +39,6 @@ def format_ref_long(entry: dict[str, Any]) -> str:
     when = format_when(entry.get('timestamp', ''))
     medium = format_ref_medium(entry)
     return f'{medium} {when}' if when else medium
-
-
-def _escape_label(label: str) -> str:
-    """Escape Rich markup characters in a user-provided label so they render literally."""
-    return label.replace('[', '\\[')
 
 
 def format_when(timestamp_iso: str) -> str:

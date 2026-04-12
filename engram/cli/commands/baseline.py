@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
@@ -76,7 +77,9 @@ def set_baseline(
     root, workflow, _impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_workflow_baseline(root, workflow, experiment_id)
     metadata, _ = load_results(root / 'experiments' / experiment_id)
-    console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]')
+    console.print(
+        f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {escape(format_ref_medium(metadata))}[/green]'
+    )
 
 
 @baseline_app.command('promote')
@@ -100,7 +103,7 @@ def promote_reference(
     metadata, _ = load_results(root / 'experiments' / experiment_id)
     console.print(
         f'[green]Promoted [bold]{impl}[/bold] reference for workflow '
-        f'[bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]'
+        f'[bold]{workflow}[/bold]: {escape(format_ref_medium(metadata))}[/green]'
     )
 
 

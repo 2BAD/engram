@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from engram.cli.prompts import ask_experiment, is_interactive
 from engram.display.experiment_ref import format_ref_long
@@ -37,7 +38,7 @@ def resolve_experiment_arg(
         raise typer.Exit(1) from None
     if resolved != arg:
         pretty = _pretty_for_echo(root, resolved)
-        console.print(f'[dim]resolved {arg} → {pretty}[/dim]')
+        console.print(f'[dim]resolved {arg} → {escape(pretty)}[/dim]')
     return resolved
 
 

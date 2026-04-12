@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 
 from engram.display.experiment_ref import format_ref_long
 
@@ -49,4 +50,4 @@ def _pretty_ref(root: Path | None, experiment_id: str) -> str:
         metadata = json.loads(results_path.read_text())
     except (json.JSONDecodeError, OSError):
         return f'[dim]{experiment_id} (unreadable)[/dim]'
-    return format_ref_long(metadata)
+    return escape(format_ref_long(metadata))

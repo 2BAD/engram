@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
@@ -134,8 +135,8 @@ def compare_command(
     # table headers never show the long underscore-joined full id.
     from_meta, _ = load_results(root / 'experiments' / from_id)
     to_meta, _ = load_results(root / 'experiments' / to_id)
-    from_ref = format_ref_medium(from_meta)
-    to_ref = format_ref_medium(to_meta)
+    from_ref = escape(format_ref_medium(from_meta))
+    to_ref = escape(format_ref_medium(to_meta))
 
     # Four stacked per-metric tables. Accuracy always shows real numbers; the other
     # three render "—" for non-classification fields (where they fall back to accuracy
