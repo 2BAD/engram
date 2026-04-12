@@ -121,7 +121,7 @@ def _confirm_cost(
 ) -> bool:
     """Show estimated cost and ask for confirmation. Returns True to proceed."""
     if get_output_mode().use_rich:
-        console.print(f'[bold]Analysis model:[/bold] {model}')
+        console.print(f'[bold]Analysis model:[/bold] {model}', highlight=False)
         console.print(f'[bold]Estimated tokens:[/bold] ~{est_input:,} input + ~{est_output:,} output')
         console.print(f'[bold]Estimated cost:[/bold] [yellow]${estimated_cost:.4f}[/yellow]')
         console.print()
