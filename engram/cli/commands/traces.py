@@ -24,11 +24,15 @@ def _fetch_all_trace_summaries(jwt_env: str, app_id: str) -> list[dict]:
     page = 1
     page_size = 100
     while True:
-        resp = management_api(jwt_env, f'/apps/{app_id}/traces', {
-            'page': page,
-            'page_size': page_size,
-            'sort': '-started_at',
-        })
+        resp = management_api(
+            jwt_env,
+            f'/apps/{app_id}/traces',
+            {
+                'page': page,
+                'page_size': page_size,
+                'sort': '-started_at',
+            },
+        )
         data = resp.get('data', [])
         traces.extend(t for t in data if t.get('status') == 'succeeded')
         total = resp.get('pagination', {}).get('total_count', 0)
@@ -65,11 +69,16 @@ def _save_trace_index(cache_dir: Path, app_id: str, timeline: list[dict], versio
     traces = existing.get('traces', {})
     traces.update(version_index)
 
-    index_path.write_text(json.dumps({
-        'app_id': app_id,
-        'deployments': timeline,
-        'traces': traces,
-    }, indent=2))
+    index_path.write_text(
+        json.dumps(
+            {
+                'app_id': app_id,
+                'deployments': timeline,
+                'traces': traces,
+            },
+            indent=2,
+        )
+    )
 
 
 def _fetch_traces(

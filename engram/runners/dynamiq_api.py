@@ -47,10 +47,14 @@ def fetch_deployment_timeline(jwt_env: str, app_id: str) -> list[dict[str, Any]]
     deployments = []
     page = 1
     while True:
-        resp = management_api(jwt_env, f'/apps/{app_id}/deployments', {
-            'page': page,
-            'page_size': 100,
-        })
+        resp = management_api(
+            jwt_env,
+            f'/apps/{app_id}/deployments',
+            {
+                'page': page,
+                'page_size': 100,
+            },
+        )
         deployments.extend(resp.get('data', []))
         total = resp.get('pagination', {}).get('total_count', 0)
         if not resp.get('data') or page * 100 >= total:
@@ -60,11 +64,13 @@ def fetch_deployment_timeline(jwt_env: str, app_id: str) -> list[dict[str, Any]]
     timeline = []
     for d in deployments:
         wv = d.get('workflow_version', {})
-        timeline.append({
-            'workflow_version_id': wv.get('id', ''),
-            'version': wv.get('version'),
-            'deployed_at': d.get('started_at', ''),
-        })
+        timeline.append(
+            {
+                'workflow_version_id': wv.get('id', ''),
+                'version': wv.get('version'),
+                'deployed_at': d.get('started_at', ''),
+            }
+        )
 
     timeline.sort(key=lambda d: d['deployed_at'])
     return timeline

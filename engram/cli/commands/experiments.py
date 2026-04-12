@@ -101,12 +101,14 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
         ]
         if has_labels:
             row.append(entry.get('label', '') or '[dim]—[/dim]')
-        row.extend([
-            _format_pct(entry.get('macro_accuracy')),
-            _format_pct(entry.get('macro_f1')),
-            _format_cost(entry.get('cost', {}).get('total_usd')),
-            str(entry.get('matched_examples', '')),
-        ])
+        row.extend(
+            [
+                _format_pct(entry.get('macro_accuracy')),
+                _format_pct(entry.get('macro_f1')),
+                _format_cost(entry.get('cost', {}).get('total_usd')),
+                str(entry.get('matched_examples', '')),
+            ]
+        )
         table.add_row(*row)
 
     console.print(table)

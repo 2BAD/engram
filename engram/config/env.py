@@ -43,8 +43,8 @@ def _parse_env_line(line: str) -> tuple[str, str] | None:
 
     # Strip a single pair of matching surrounding quotes (requires at least 2 chars
     # so a lone stray quote is kept verbatim rather than collapsing to empty string).
-    has_matched_quotes = (
-        (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'"))
+    has_matched_quotes = (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
     )
     if has_matched_quotes and len(value) > 1:
         value = value[1:-1]

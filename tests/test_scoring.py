@@ -363,9 +363,9 @@ def test_agreement_metrics_fleiss_skips_partial_items():
 def test_accuracy_stdev_across_repeats():
     """Stdev across per-repeat field accuracies."""
     per_repeat = {
-        0: [True, True, False, False],   # 0.5
-        1: [True, True, True, False],    # 0.75
-        2: [True, True, True, True],     # 1.0
+        0: [True, True, False, False],  # 0.5
+        1: [True, True, True, False],  # 0.75
+        2: [True, True, True, True],  # 1.0
     }
     stdev = compute_accuracy_stdev(per_repeat)
     # statistics.stdev([0.5, 0.75, 1.0]) = 0.25
@@ -379,9 +379,9 @@ def test_accuracy_stdev_returns_none_when_only_one_repeat():
 def test_accuracy_stdev_skips_empty_repeats():
     """A repeat that produced no scored examples doesn't enter the stdev computation."""
     per_repeat = {
-        0: [True, True],   # 1.0
-        1: [],             # skipped
-        2: [False, False], # 0.0
+        0: [True, True],  # 1.0
+        1: [],  # skipped
+        2: [False, False],  # 0.0
     }
     stdev = compute_accuracy_stdev(per_repeat)
     # statistics.stdev([1.0, 0.0])
@@ -514,13 +514,7 @@ def test_score_experiment_non_classification_field(tmp_path: Path):
     wf_dir = tmp_path / 'workflows' / 'measure'
     wf_dir.mkdir(parents=True)
     (wf_dir / 'workflow.yaml').write_text(
-        'name: measure\n'
-        'output:\n'
-        '  fields:\n'
-        '    score:\n'
-        '      type: number\n'
-        'scorers:\n'
-        '  score: numeric_tolerance(0.1)\n'
+        'name: measure\noutput:\n  fields:\n    score:\n      type: number\nscorers:\n  score: numeric_tolerance(0.1)\n'
     )
 
     impl_dir = tmp_path / 'implementations' / 'measure-api'

@@ -180,13 +180,19 @@ def _await_trace(
 
     if trace is None:
         return RunResult(
-            input_file='', status='timeout', latency_ms=total_latency,
-            error='Trace polling timed out', trace_id=trace_id,
+            input_file='',
+            status='timeout',
+            latency_ms=total_latency,
+            error='Trace polling timed out',
+            trace_id=trace_id,
         )
     if trace['status'] != 'succeeded':
         return RunResult(
-            input_file='', status='failed', latency_ms=total_latency,
-            error=f'Trace status: {trace["status"]}', trace_id=trace_id,
+            input_file='',
+            status='failed',
+            latency_ms=total_latency,
+            error=f'Trace status: {trace["status"]}',
+            trace_id=trace_id,
         )
 
     # Fetch and cache the full trace detail

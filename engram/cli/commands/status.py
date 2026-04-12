@@ -97,10 +97,7 @@ def _print_json_status(project, workflows, implementations, datasets, baselines,
 
     payload = {
         'project': {'name': project.name, 'description': project.description},
-        'workflows': [
-            {'name': name, 'baseline': baselines.get(name, {}).get('baseline')}
-            for name in workflows
-        ],
+        'workflows': [{'name': name, 'baseline': baselines.get(name, {}).get('baseline')} for name in workflows],
         'implementations': impl_entries,
         'datasets': list(datasets),
         'validation_errors': errors,

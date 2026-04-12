@@ -167,9 +167,7 @@ def _fleiss_kappa(per_input_predictions: dict[str, list[str]], repeats: int) -> 
             table[i][label_to_idx[label]] += 1
 
     # P_i = (sum_j table[i][j]^2 - repeats) / (repeats * (repeats - 1))
-    p_bar = sum(
-        (sum(c * c for c in row) - repeats) / (repeats * (repeats - 1)) for row in table
-    ) / n_items
+    p_bar = sum((sum(c * c for c in row) - repeats) / (repeats * (repeats - 1)) for row in table) / n_items
 
     # p_j = total assignments to category j / total assignments overall
     total_assignments = n_items * repeats

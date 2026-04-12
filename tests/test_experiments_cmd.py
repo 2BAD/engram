@@ -68,12 +68,8 @@ def test_experiments_list_shows_rows(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _seed_index(
         tmp_path,
         [
-            _make_entry(
-                'exp-a', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.95, 0.92, 0.05, short_id=1
-            ),
-            _make_entry(
-                'exp-b', 'classify-openai', 'sample', '2026-04-02T12:00:00Z', 0.88, 0.85, 0.02, short_id=2
-            ),
+            _make_entry('exp-a', 'classify-anthropic', 'sample', '2026-04-01T12:00:00Z', 0.95, 0.92, 0.05, short_id=1),
+            _make_entry('exp-b', 'classify-openai', 'sample', '2026-04-02T12:00:00Z', 0.88, 0.85, 0.02, short_id=2),
         ],
     )
     monkeypatch.chdir(tmp_path)
@@ -101,12 +97,8 @@ def test_experiments_list_sorted_newest_first(tmp_path: Path, monkeypatch: pytes
     _seed_index(
         tmp_path,
         [
-            _make_entry(
-                'old-exp', 'classify-anthropic', 'sample', '2026-04-01T08:00:00Z', 0.9, 0.9, 0.01, short_id=1
-            ),
-            _make_entry(
-                'new-exp', 'classify-anthropic', 'sample', '2026-04-10T08:00:00Z', 0.9, 0.9, 0.01, short_id=2
-            ),
+            _make_entry('old-exp', 'classify-anthropic', 'sample', '2026-04-01T08:00:00Z', 0.9, 0.9, 0.01, short_id=1),
+            _make_entry('new-exp', 'classify-anthropic', 'sample', '2026-04-10T08:00:00Z', 0.9, 0.9, 0.01, short_id=2),
         ],
     )
     monkeypatch.chdir(tmp_path)

@@ -14,57 +14,55 @@ from engram.tracking.index import list_experiments
 
 
 def is_interactive() -> bool:
-  """Whether stdin is a TTY. Factored out so tests can patch it."""
-  return sys.stdin.isatty()
+    """Whether stdin is a TTY. Factored out so tests can patch it."""
+    return sys.stdin.isatty()
 
 
 def ask_implementation(root: Path) -> str:
-  """Arrow-key select from discovered implementations. Auto-picks when there is only one."""
-  impls = discover_implementations(root)
-  if not impls:
-    raise SystemExit('No implementations found. Run `engram init` to scaffold a project.')
-  if len(impls) == 1:
-    return impls[0]
-  return questionary.select('Select implementation:', choices=impls).unsafe_ask()
+    """Arrow-key select from discovered implementations. Auto-picks when there is only one."""
+    impls = discover_implementations(root)
+    if not impls:
+        raise SystemExit('No implementations found. Run `engram init` to scaffold a project.')
+    if len(impls) == 1:
+        return impls[0]
+    return questionary.select('Select implementation:', choices=impls).unsafe_ask()
 
 
 def ask_dataset(root: Path) -> str:
-  """Arrow-key select from discovered datasets. Auto-picks when there is only one."""
-  datasets = discover_datasets(root)
-  if not datasets:
-    raise SystemExit('No datasets found. Add a dataset directory under datasets/.')
-  if len(datasets) == 1:
-    return datasets[0]
-  return questionary.select('Select dataset:', choices=datasets).unsafe_ask()
+    """Arrow-key select from discovered datasets. Auto-picks when there is only one."""
+    datasets = discover_datasets(root)
+    if not datasets:
+        raise SystemExit('No datasets found. Add a dataset directory under datasets/.')
+    if len(datasets) == 1:
+        return datasets[0]
+    return questionary.select('Select dataset:', choices=datasets).unsafe_ask()
 
 
 def ask_experiment(root: Path, limit: int = 10) -> str:
-  """Arrow-key select from recent experiments. Returns the full experiment id."""
-  entries = list_experiments(root)
-  if not entries:
-    raise SystemExit(
-      'No experiments found. Run `engram run <impl> --dataset <name>` first.'
-    )
+    """Arrow-key select from recent experiments. Returns the full experiment id."""
+    entries = list_experiments(root)
+    if not entries:
+        raise SystemExit('No experiments found. Run `engram run <impl> --dataset <name>` first.')
 
-  entries = entries[:limit]
-  choices = []
-  for entry in entries:
-    ref = format_ref_medium(entry)
-    when = format_when(entry.get('timestamp', ''))
-    accuracy = entry.get('macro_accuracy')
-    acc_str = f'acc {accuracy:.1%}' if accuracy is not None else ''
-    label = f'{ref}  {when}  {acc_str}'.rstrip()
-    choices.append(Choice(title=label, value=entry.get('experiment_id', entry.get('id', ''))))
+    entries = entries[:limit]
+    choices = []
+    for entry in entries:
+        ref = format_ref_medium(entry)
+        when = format_when(entry.get('timestamp', ''))
+        accuracy = entry.get('macro_accuracy')
+        acc_str = f'acc {accuracy:.1%}' if accuracy is not None else ''
+        label = f'{ref}  {when}  {acc_str}'.rstrip()
+        choices.append(Choice(title=label, value=entry.get('experiment_id', entry.get('id', ''))))
 
-  return questionary.select('Select experiment:', choices=choices).unsafe_ask()
+    return questionary.select('Select experiment:', choices=choices).unsafe_ask()
 
 
 def ask_label() -> str | None:
-  """Prompt for an optional experiment label. Returns None on empty input."""
-  answer = questionary.text('Label (optional):').unsafe_ask()
-  return answer.strip() or None
+    """Prompt for an optional experiment label. Returns None on empty input."""
+    answer = questionary.text('Label (optional):').unsafe_ask()
+    return answer.strip() or None
 
 
 def ask_confirm(message: str, default: bool = False) -> bool:
-  """Yes/no confirmation prompt."""
-  return questionary.confirm(message, default=default).unsafe_ask()
+    """Yes/no confirmation prompt."""
+    return questionary.confirm(message, default=default).unsafe_ask()

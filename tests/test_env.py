@@ -66,11 +66,7 @@ def test_load_project_env_missing_file(tmp_path: Path) -> None:
 
 def test_load_project_env_basic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / '.env').write_text(
-        '# test env\n'
-        'ANTHROPIC_API_KEY=sk-ant-test\n'
-        'OPENAI_API_KEY="sk-openai-test"\n'
-        '\n'
-        'export OTHER=value-from-export\n'
+        '# test env\nANTHROPIC_API_KEY=sk-ant-test\nOPENAI_API_KEY="sk-openai-test"\n\nexport OTHER=value-from-export\n'
     )
     # Make sure our tests don't leak into the real environment.
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)

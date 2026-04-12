@@ -311,9 +311,7 @@ def test_repeats_default_one_preserves_legacy_shape(tmp_path: Path, monkeypatch:
     assert all(r.repeat_index == 0 for r in results)
 
 
-def test_repeats_partial_failure_keeps_failed_repeat_in_results(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_repeats_partial_failure_keeps_failed_repeat_in_results(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _make_dataset(tmp_path, 'small', 1)
     capture: dict = {}
     _install_runner_stubs(monkeypatch, capture)

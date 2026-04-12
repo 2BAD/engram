@@ -57,9 +57,7 @@ def pick_experiment_id(root: Path, limit: int = 10) -> str:
     """Prompt the user to pick an experiment with arrow-key navigation; exits 1 if stdin isn't a TTY."""
     if not is_interactive():
         console.print('[red]No experiment ID provided and stdin is not interactive.[/red]')
-        console.print(
-            'Hint: pass the experiment ID explicitly, or run engram from a terminal to pick from a list.'
-        )
+        console.print('Hint: pass the experiment ID explicitly, or run engram from a terminal to pick from a list.')
         raise typer.Exit(1)
 
     try:

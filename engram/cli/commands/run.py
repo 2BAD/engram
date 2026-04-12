@@ -75,12 +75,8 @@ def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     runner = get_runner(impl_config.runner)
     missing = [v for v in runner.required_env_vars(impl_config) if v not in os.environ]
     if missing:
-        console.print(
-            f'[red]Missing required environment variable(s): {", ".join(missing)}[/red]'
-        )
-        console.print(
-            'Add them to [bold].env[/bold] in the project root, or export them in your shell:'
-        )
+        console.print(f'[red]Missing required environment variable(s): {", ".join(missing)}[/red]')
+        console.print('Add them to [bold].env[/bold] in the project root, or export them in your shell:')
         for var in missing:
             console.print(f'  [cyan]export {var}=...[/cyan]')
         raise typer.Exit(1)

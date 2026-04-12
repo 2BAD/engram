@@ -76,9 +76,7 @@ def set_baseline(
     root, workflow, _impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_workflow_baseline(root, workflow, experiment_id)
     metadata, _ = load_results(root / 'experiments' / experiment_id)
-    console.print(
-        f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]'
-    )
+    console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {format_ref_medium(metadata)}[/green]')
 
 
 @baseline_app.command('promote')

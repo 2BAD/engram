@@ -60,9 +60,7 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     if repeat_aware_fields:
         summary['repeats'] = max(r.repeat_index for r in results) + 1
         summary['field_accuracy_stdev'] = {
-            fm.field_name: round(stdev, 4)
-            for fm in repeat_aware_fields
-            if (stdev := fm.accuracy_stdev) is not None
+            fm.field_name: round(stdev, 4) for fm in repeat_aware_fields if (stdev := fm.accuracy_stdev) is not None
         }
         summary['field_mean_agreement_rate'] = {
             fm.field_name: round(value, 4)
@@ -70,14 +68,10 @@ def append_to_index(root: Path, report: EvalReport) -> None:
             if (value := fm.mean_agreement_rate) is not None
         }
         summary['field_majority_rate'] = {
-            fm.field_name: round(value, 4)
-            for fm in repeat_aware_fields
-            if (value := fm.majority_rate) is not None
+            fm.field_name: round(value, 4) for fm in repeat_aware_fields if (value := fm.majority_rate) is not None
         }
         summary['field_fleiss_kappa'] = {
-            fm.field_name: round(value, 4)
-            for fm in repeat_aware_fields
-            if (value := fm.fleiss_kappa) is not None
+            fm.field_name: round(value, 4) for fm in repeat_aware_fields if (value := fm.fleiss_kappa) is not None
         }
 
     # Calibration data for `engram estimate`: mean output tokens across runs

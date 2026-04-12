@@ -35,8 +35,8 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     resolved_scorers = {name: resolve_scorer(scorer, workflow_dir) for name, scorer in wf.scorers.items()}
 
     repeats = max((r.repeat_index for r in results), default=0) + 1
-    field_scores, field_predictions, per_repeat_scores, predictions_by_input, matched_examples = (
-        _collect_scores(results, labels, resolved_scorers)
+    field_scores, field_predictions, per_repeat_scores, predictions_by_input, matched_examples = _collect_scores(
+        results, labels, resolved_scorers
     )
 
     # A field gets per-class precision/recall/F1 only when the scorer is exact_match
