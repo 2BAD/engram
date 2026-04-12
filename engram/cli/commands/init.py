@@ -10,6 +10,9 @@ console = Console()
 _ENGRAM_YAML = """\
 name: my-project
 description: An engram evaluation project
+
+analysis:
+  model: claude-sonnet-4-6
 """
 
 _GITIGNORE = """\

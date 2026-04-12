@@ -63,7 +63,7 @@ def suggest_command(
         console.print('Add an [bold]analysis:[/bold] block with at least a [bold]model:[/bold] field:')
         console.print()
         console.print('  analysis:')
-        console.print('    model: claude-sonnet-4-5-20250514')
+        console.print('    model: claude-sonnet-4-6')
         raise typer.Exit(1)
 
     config = project.analysis
