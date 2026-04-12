@@ -97,5 +97,5 @@ def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     )
     console.print()
     console.print('[bold]Next steps:[/bold]')
-    console.print(f'  Score the run:   [cyan]engram score {short_id} --save[/cyan]')
+    console.print(f'  Score the run:   [cyan]engram score #{short_id} --save[/cyan]')
     console.print('  List past runs:  [cyan]engram experiments list[/cyan]')

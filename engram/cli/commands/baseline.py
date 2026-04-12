@@ -62,7 +62,7 @@ def _resolve(
 def set_baseline(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     implementation: Annotated[
         str | None,
@@ -86,7 +86,7 @@ def set_baseline(
 def promote_reference(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     implementation: Annotated[
         str | None,

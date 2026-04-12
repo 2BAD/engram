@@ -25,7 +25,7 @@ console = Console()
 def score_command(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively from recent runs.'),
+        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively from recent runs.'),
     ] = None,
     save: Annotated[bool, typer.Option('--save', help='Save report and update experiment index')] = False,
     implementation: Annotated[

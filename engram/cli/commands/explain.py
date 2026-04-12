@@ -30,7 +30,7 @@ console = Console()
 def explain_command(
     experiment_a: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     experiment_b: Annotated[
         str | None,

@@ -197,7 +197,7 @@ def test_resolve_short_id_against_index(tmp_path: Path):
     append_to_index(tmp_path, EvalReport(experiment_id='exp-a', field_metrics=[]))
     append_to_index(tmp_path, EvalReport(experiment_id='exp-b', field_metrics=[]))
 
-    assert resolve_experiment_id(tmp_path, '2') == 'exp-b'
+    assert resolve_experiment_id(tmp_path, '#2') == 'exp-b'
 
 
 def test_resolve_short_id_falls_back_to_experiments_dir(tmp_path: Path):
@@ -205,7 +205,7 @@ def test_resolve_short_id_falls_back_to_experiments_dir(tmp_path: Path):
     (tmp_path / 'experiments').mkdir()
     _setup_experiment(tmp_path, 'exp-unscored', 'classify-api', 'test-ds', 'A', short_id=7)
     # Note: no append_to_index — this experiment has never been scored.
-    assert resolve_experiment_id(tmp_path, '7') == 'exp-unscored'
+    assert resolve_experiment_id(tmp_path, '#7') == 'exp-unscored'
 
 
 def test_resolve_short_id_not_found(tmp_path: Path):
@@ -214,7 +214,7 @@ def test_resolve_short_id_not_found(tmp_path: Path):
     _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
 
     with pytest.raises(FileNotFoundError, match='No experiment found with short_id #99'):
-        resolve_experiment_id(tmp_path, '99')
+        resolve_experiment_id(tmp_path, '#99')
 
 
 # --- @ / @~N recency resolution ---
@@ -364,7 +364,7 @@ def test_resolve_short_id_ignores_impl_filter(tmp_path: Path):
     _setup_experiment_with_timestamp(tmp_path, 'exp-ant', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
 
     # The lookup succeeds even though the filter would exclude the only match.
-    assert resolve_experiment_id(tmp_path, '1', impl='openai') == 'exp-ant'
+    assert resolve_experiment_id(tmp_path, '#1', impl='openai') == 'exp-ant'
 
 
 def test_append_to_index_upserts_rescored_experiment(tmp_path: Path):

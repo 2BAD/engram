@@ -162,8 +162,8 @@ def resolve_experiment_id(
     - ``@`` or ``@~N`` selects by recency: ``@`` is the newest experiment,
       ``@~1`` is one step older, and so on. The ``impl`` and ``dataset``
       filters narrow the recency list before the Nth-back lookup.
-    - A pure integer is a ``short_id`` lookup — index first, then a scan of
-      every ``experiments/*/results.json`` so unscored runs stay reachable.
+    - ``#N`` (e.g. ``#7``) is a short_id lookup — index first, then a scan
+      of every ``experiments/*/results.json`` so unscored runs stay reachable.
       Short ids are globally unique, so ``impl`` / ``dataset`` filters are
       ignored here.
     - Anything else is returned unchanged (full experiment id).
@@ -182,8 +182,8 @@ def resolve_experiment_id(
             raise FileNotFoundError(msg)
         return entries[n]['experiment_id']
 
-    if arg.isdigit():
-        target = int(arg)
+    if arg.startswith('#') and arg[1:].isdigit():
+        target = int(arg[1:])
         for entry in read_index(root):
             if entry.get('short_id') == target:
                 return entry['id']

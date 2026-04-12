@@ -209,11 +209,11 @@ def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) ->
 
 
 def test_score_command_accepts_short_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """`engram score 1` resolves the short_id through the index and scores the matching experiment."""
+    """`engram score #1` resolves the short_id through the index and scores the matching experiment."""
     _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ['score', '1'])
+    result = runner.invoke(app, ['score', '#1'])
     assert result.exit_code == 0
     assert 'exp-a' in result.output
 
@@ -223,7 +223,7 @@ def test_score_command_rejects_unknown_short_id(tmp_path: Path, monkeypatch: pyt
     _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ['score', '99'])
+    result = runner.invoke(app, ['score', '#99'])
     assert result.exit_code == 1
     assert 'No experiment found with short_id #99' in result.output
 

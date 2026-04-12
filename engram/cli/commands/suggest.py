@@ -32,7 +32,7 @@ _CACHE_FILENAME = 'suggest.md'
 def suggest_command(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     yes: Annotated[
         bool,
