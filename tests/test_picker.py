@@ -37,18 +37,18 @@ def _make_entry(exp_id: str, timestamp: str, accuracy: float = 1.0) -> dict:
 def test_picker_exits_when_stdin_not_tty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Non-interactive stdin → friendly error + exit 1 instead of hanging on input()."""
     _seed_index(tmp_path, [_make_entry('only-exp', '2026-04-10T00:00:00')])
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: False)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: False)
 
     with pytest.raises(typer.Exit) as excinfo:
         pick_experiment_id(tmp_path)
     assert excinfo.value.exit_code == 1
 
 
-def test_picker_exits_when_index_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Empty index → helpful error pointing at `engram run` + `engram score --save`."""
+def test_picker_exits_when_no_experiments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """No experiments on disk → helpful error + exit 1."""
     (tmp_path / 'engram.yaml').write_text('name: test\n')
     (tmp_path / 'experiments').mkdir()
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: True)
 
     with pytest.raises(typer.Exit) as excinfo:
         pick_experiment_id(tmp_path)
@@ -56,7 +56,7 @@ def test_picker_exits_when_index_empty(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_picker_returns_selected_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Interactive mode: mock IntPrompt.ask and verify the right entry comes back."""
+    """Interactive mode: mock ask_experiment and verify pick_experiment_id delegates."""
     _seed_index(
         tmp_path,
         [
@@ -65,14 +65,14 @@ def test_picker_returns_selected_id(tmp_path: Path, monkeypatch: pytest.MonkeyPa
             _make_entry('oldest', '2026-04-08T06:00:00', accuracy=0.60),
         ],
     )
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
-    monkeypatch.setattr('engram.cli.picker.IntPrompt.ask', lambda *_a, **_k: 2)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: True)
+    monkeypatch.setattr('engram.cli.picker.ask_experiment', lambda _root, **_kw: 'middle')
 
     assert pick_experiment_id(tmp_path) == 'middle'
 
 
 def test_picker_sorts_newest_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Picking choice 1 returns the most recent experiment, regardless of file order."""
+    """ask_experiment returns whatever the user selects; sorting is internal to questionary."""
     _seed_index(
         tmp_path,
         [
@@ -81,30 +81,29 @@ def test_picker_sorts_newest_first(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             _make_entry('new', '2026-04-10T02:00:00'),
         ],
     )
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
-    monkeypatch.setattr('engram.cli.picker.IntPrompt.ask', lambda *_a, **_k: 1)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: True)
+    monkeypatch.setattr('engram.cli.picker.ask_experiment', lambda _root, **_kw: 'new')
 
     assert pick_experiment_id(tmp_path) == 'new'
 
 
-def test_picker_caps_to_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """With more entries than `limit`, only the newest `limit` are offered."""
+def test_picker_delegates_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """pick_experiment_id passes its limit through to ask_experiment."""
     entries = [_make_entry(f'exp-{i:02d}', f'2026-04-{i:02d}T00:00:00') for i in range(1, 15)]
     _seed_index(tmp_path, entries)
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: True)
 
-    # Choice 1 should be exp-14 (newest), choice 10 should be exp-05 (5th newest).
     captured: dict = {}
 
-    def _ask(*_args, choices: list[str], **_kwargs) -> int:  # type: ignore[no-untyped-def]
-        captured['choices'] = choices
-        return 1
+    def _mock_ask(_root, *, limit=10):
+        captured['limit'] = limit
+        return 'exp-14'
 
-    monkeypatch.setattr('engram.cli.picker.IntPrompt.ask', _ask)
+    monkeypatch.setattr('engram.cli.picker.ask_experiment', _mock_ask)
 
     result = pick_experiment_id(tmp_path, limit=10)
     assert result == 'exp-14'
-    assert len(captured['choices']) == 10
+    assert captured['limit'] == 10
 
 
 # --- End-to-end: commands dispatch through the picker when the ID is omitted ---
@@ -116,8 +115,8 @@ def test_score_command_picks_when_no_id(tmp_path: Path, monkeypatch: pytest.Monk
 
     _setup_minimal_scored_project(tmp_path, 'exp-a')
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr('engram.cli.picker._is_interactive', lambda: True)
-    monkeypatch.setattr('engram.cli.picker.IntPrompt.ask', lambda *_a, **_k: 1)
+    monkeypatch.setattr('engram.cli.picker.is_interactive', lambda: True)
+    monkeypatch.setattr('engram.cli.picker.ask_experiment', lambda _root, **_kw: 'exp-a')
 
     # Sanity check the experiment is scorable before we run the command.
     assert score_experiment(tmp_path, 'exp-a').experiment_id == 'exp-a'

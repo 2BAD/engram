@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from engram.cli.prompts import ask_dataset, ask_implementation, is_interactive
 from engram.config.discovery import find_project_root
 from engram.cost.estimator import estimate_cost
 from engram.observability.output_mode import get_output_mode
@@ -15,13 +16,26 @@ console = Console()
 
 
 def estimate_command(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
-    dataset: Annotated[str, typer.Option('--dataset', '-d', help='Dataset name')],
+    implementation: Annotated[
+        str | None,
+        typer.Argument(help='Implementation name. Omit to pick interactively.'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Dataset name. Omit to pick interactively.'),
+    ] = None,
 ) -> None:
     """Estimate cost for running an implementation against a dataset."""
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
+        raise typer.Exit(1)
+
+    if is_interactive():
+        implementation = implementation or ask_implementation(root)
+        dataset = dataset or ask_dataset(root)
+    elif not implementation or not dataset:
+        console.print('[red]Implementation and --dataset are required in non-interactive mode.[/red]')
         raise typer.Exit(1)
 
     result = estimate_cost(root, implementation, dataset)

@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from engram.cli.prompts import ask_dataset, ask_implementation, ask_label, is_interactive
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_implementation
 from engram.eval.loop import run_eval
@@ -15,8 +16,14 @@ console = Console()
 
 
 def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
-    dataset: Annotated[str, typer.Option('--dataset', '-d', help='Dataset name')],
+    implementation: Annotated[
+        str | None,
+        typer.Argument(help='Implementation name. Omit to pick interactively.'),
+    ] = None,
+    dataset: Annotated[
+        str | None,
+        typer.Option('--dataset', '-d', help='Dataset name. Omit to pick interactively.'),
+    ] = None,
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,
     limit: Annotated[
         int | None,
@@ -51,6 +58,15 @@ def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
+        raise typer.Exit(1)
+
+    if is_interactive():
+        implementation = implementation or ask_implementation(root)
+        dataset = dataset or ask_dataset(root)
+        if label is None:
+            label = ask_label()
+    elif not implementation or not dataset:
+        console.print('[red]Implementation and --dataset are required in non-interactive mode.[/red]')
         raise typer.Exit(1)
 
     # Preflight: fail fast with a friendly message if any required env vars are
