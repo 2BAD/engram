@@ -45,13 +45,13 @@ def estimate_cost(
     # Estimate per-example cost
     examples = []
     total_cost = 0.0
-    for filename, content in inputs:
-        input_tokens = prompt_tokens + _rough_token_count(content)
+    for inp in inputs:
+        input_tokens = prompt_tokens + _rough_token_count(inp.text or inp.text_for_display)
         example_cost = (input_tokens * input_rate) + (avg_output_tokens * output_rate)
         total_cost += example_cost
         examples.append(
             {
-                'input_file': filename,
+                'input_file': inp.filename,
                 'estimated_input_tokens': input_tokens,
                 'estimated_output_tokens': avg_output_tokens,
                 'estimated_cost_usd': round(example_cost, 6),

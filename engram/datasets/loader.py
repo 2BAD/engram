@@ -6,22 +6,30 @@ import json
 from pathlib import Path
 from typing import Any
 
+from engram.models.input import InputData, detect_media_type
 
-def load_dataset_inputs(root: Path, dataset_name: str) -> list[tuple[str, str]]:
+
+def load_dataset_inputs(root: Path, dataset_name: str) -> list[InputData]:
     """
     Load all input files from datasets/{name}/inputs/.
 
-    Returns a list of (filename, content) tuples sorted by filename.
+    Text files are loaded as strings; images and PDFs are loaded as binary with
+    the appropriate media type. Returns a list sorted by filename.
     """
     inputs_dir = root / 'datasets' / dataset_name / 'inputs'
     if not inputs_dir.exists():
         msg = f'Inputs directory not found: {inputs_dir}'
         raise FileNotFoundError(msg)
 
-    results = []
+    results: list[InputData] = []
     for f in sorted(inputs_dir.iterdir()):
-        if f.is_file():
-            results.append((f.name, f.read_text()))
+        if not f.is_file():
+            continue
+        media_type = detect_media_type(f)
+        if media_type:
+            results.append(InputData(filename=f.name, data=f.read_bytes(), media_type=media_type))
+        else:
+            results.append(InputData(filename=f.name, text=f.read_text()))
     return results
 
 

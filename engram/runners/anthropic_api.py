@@ -19,6 +19,7 @@ from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
+    from engram.models.input import InputData
 
 
 class AnthropicApiRunner(Runner):
@@ -35,7 +36,7 @@ class AnthropicApiRunner(Runner):
         key = impl_config.runner_config.get('api_key_env')
         return [key] if key else []
 
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
+    def trigger(self, input_data: InputData, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Send input to the Anthropic API and parse the JSON response."""
         rc = impl_config.runner_config
         env_var = rc['api_key_env']
@@ -48,6 +49,7 @@ class AnthropicApiRunner(Runner):
         temperature = float(rc.get('temperature', '0'))
 
         system_prompt = _load_system_prompt(impl_dir)
+        user_content = _build_anthropic_content(input_data)
 
         client = anthropic.Anthropic(api_key=api_key)
 
@@ -58,7 +60,7 @@ class AnthropicApiRunner(Runner):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
-                messages=[{'role': 'user', 'content': input_data}],
+                messages=[{'role': 'user', 'content': user_content}],
             )
         except anthropic.APIError as e:
             latency = (time.monotonic() - start) * 1000
@@ -120,6 +122,43 @@ class AnthropicApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _build_anthropic_content(input_data: InputData) -> str | list[dict[str, Any]]:
+    """
+    Build the user message content for the Anthropic API.
+
+    Text inputs are passed as a plain string. Binary inputs (images, PDFs) are
+    encoded as content blocks per the Anthropic Messages API spec.
+    """
+    if not input_data.is_binary:
+        return input_data.text or ''
+
+    if input_data.is_image:
+        return [
+            {
+                'type': 'image',
+                'source': {
+                    'type': 'base64',
+                    'media_type': input_data.media_type,
+                    'data': input_data.data_base64,
+                },
+            },
+        ]
+
+    if input_data.is_document:
+        return [
+            {
+                'type': 'document',
+                'source': {
+                    'type': 'base64',
+                    'media_type': input_data.media_type,
+                    'data': input_data.data_base64,
+                },
+            },
+        ]
+
+    return input_data.text_for_display
 
 
 def _load_system_prompt(impl_dir: Path) -> str:

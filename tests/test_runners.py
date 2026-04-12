@@ -8,6 +8,7 @@ import openai
 import pytest
 
 from engram.models.implementation import ConfigManagement, ImplementationConfig
+from engram.models.input import InputData
 from engram.runners.anthropic_agent import AnthropicAgentRunner
 from engram.runners.anthropic_api import AnthropicApiRunner, _parse_json_output
 from engram.runners.errors import MissingAPIKeyError
@@ -111,7 +112,7 @@ def test_api_runner_trigger(tmp_path: Path):
         mock_cls.return_value.messages.create.return_value = mock_response
 
         runner = AnthropicApiRunner()
-        result = runner.trigger('some input', impl_config, tmp_path)
+        result = runner.trigger(InputData(filename='test', text='some input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.output == {'topic': 'A', 'sentiment': 'Positive'}
@@ -140,7 +141,7 @@ def test_api_runner_defaults_temperature_to_zero(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
         assert call_kwargs['temperature'] == 0.0
@@ -171,7 +172,7 @@ def test_api_runner_forwards_explicit_temperature(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
         assert call_kwargs['temperature'] == 0.7
@@ -201,7 +202,7 @@ def test_api_runner_trigger_unknown_model_zero_cost(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.cost_usd == 0.0
@@ -225,7 +226,7 @@ def test_api_runner_trigger_parse_failure_still_records_cost(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
@@ -248,7 +249,7 @@ def test_api_runner_trigger_api_error(tmp_path: Path):
     ):
         err = anthropic.APIError('rate limit exceeded', request=MagicMock(), body=None)
         mock_cls.return_value.messages.create.side_effect = err
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'rate limit exceeded' in result.error
@@ -271,7 +272,7 @@ def test_api_runner_trigger_missing_system_prompt(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
         # Verify the call went through with an empty system string.
         call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
         assert call_kwargs['system'] == ''
@@ -299,7 +300,7 @@ def test_api_runner_trigger_empty_content(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
@@ -325,7 +326,7 @@ def test_api_runner_trigger_non_dict_json(tmp_path: Path):
         patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
     ):
         mock_cls.return_value.messages.create.return_value = mock_response
-        result = AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
@@ -360,7 +361,7 @@ def test_api_runner_configure_pricing_overrides_rates(tmp_path: Path):
         mock_cls.return_value.messages.create.return_value = mock_response
         runner = AnthropicApiRunner()
         runner.configure_pricing({'claude-sonnet-4-5-20250514': {'input_cost_per_token': 0.000006}})
-        result = runner.trigger('input', impl_config, tmp_path)
+        result = runner.trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     # configure_pricing forwarded the overrides to load_pricing.
     assert mock_load.call_args.kwargs['overrides']['claude-sonnet-4-5-20250514']['input_cost_per_token'] == 0.000006
@@ -385,7 +386,7 @@ def test_api_runner_missing_key_raises_friendly_error(tmp_path: Path, monkeypatc
 
     impl_config = _make_impl_config()
     with pytest.raises(MissingAPIKeyError) as excinfo:
-        AnthropicApiRunner().trigger('input', impl_config, tmp_path)
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert excinfo.value.env_var == 'ANTHROPIC_API_KEY'
     assert 'ANTHROPIC_API_KEY' in str(excinfo.value)
@@ -428,7 +429,7 @@ def classify(input_data):
     )
 
     runner = AnthropicAgentRunner()
-    result = runner.trigger('some input', impl_config, tmp_path)
+    result = runner.trigger(InputData(filename='test', text='some input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.output == {'topic': 'A'}
@@ -445,7 +446,7 @@ def test_agent_runner_bad_entry_point():
     )
 
     runner = AnthropicAgentRunner()
-    result = runner.trigger('input', impl_config, Path('/tmp'))
+    result = runner.trigger(InputData(filename='test', text='input'), impl_config, Path('/tmp'))
 
     assert result.status == 'failed'
     assert 'Invalid entry_point' in result.error
@@ -460,7 +461,7 @@ def test_agent_runner_missing_file(tmp_path: Path):
     )
 
     runner = AnthropicAgentRunner()
-    result = runner.trigger('input', impl_config, tmp_path)
+    result = runner.trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'not found' in result.error
@@ -525,7 +526,7 @@ def test_openai_runner_trigger(tmp_path: Path):
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
         runner = OpenAIApiRunner()
-        result = runner.trigger('some input', impl_config, tmp_path)
+        result = runner.trigger(InputData(filename='test', text='some input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.output == {'topic': 'A', 'sentiment': 'Positive'}
@@ -550,7 +551,7 @@ def test_openai_runner_defaults_temperature_to_zero(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
         assert call_kwargs['temperature'] == 0.0
@@ -577,7 +578,7 @@ def test_openai_runner_forwards_explicit_temperature(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
         assert call_kwargs['temperature'] == 0.5
@@ -598,7 +599,7 @@ def test_openai_runner_requests_json_mode(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
         assert call_kwargs['response_format'] == {'type': 'json_object'}
@@ -629,7 +630,7 @@ def test_openai_runner_trigger_unknown_model_zero_cost(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        result = OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.cost_usd == 0.0
@@ -649,7 +650,7 @@ def test_openai_runner_trigger_parse_failure_still_records_cost(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        result = OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
@@ -670,7 +671,7 @@ def test_openai_runner_trigger_api_error(tmp_path: Path):
     ):
         err = openai.APIError('rate limit exceeded', MagicMock(), body=None)
         mock_cls.return_value.chat.completions.create.side_effect = err
-        result = OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'rate limit exceeded' in result.error
@@ -689,7 +690,7 @@ def test_openai_runner_trigger_missing_system_prompt(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        result = OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
         call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
         # Only the user message — no system role, since OpenAI rejects empty-string system content.
@@ -718,7 +719,7 @@ def test_openai_runner_trigger_empty_content(tmp_path: Path):
         patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
-        result = OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert result.status == 'failed'
     assert 'Failed to parse JSON' in result.error
@@ -739,7 +740,7 @@ def test_openai_runner_missing_key_raises_friendly_error(tmp_path: Path, monkeyp
 
     impl_config = _make_openai_impl_config()
     with pytest.raises(MissingAPIKeyError) as excinfo:
-        OpenAIApiRunner().trigger('input', impl_config, tmp_path)
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert excinfo.value.env_var == 'OPENAI_API_KEY'
 
@@ -783,7 +784,7 @@ def test_openai_runner_configure_pricing_overrides_rates(tmp_path: Path):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
         runner = OpenAIApiRunner()
         runner.configure_pricing({'gpt-5.4-nano': {'input_cost_per_token': 0.0000002}})
-        result = runner.trigger('input', impl_config, tmp_path)
+        result = runner.trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
     assert mock_load.call_args.kwargs['overrides']['gpt-5.4-nano']['input_cost_per_token'] == 0.0000002
     # 100 * 0.0000002 + 50 * 0.0000008 = 0.00002 + 0.00004 = 0.00006

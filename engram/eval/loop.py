@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.progress import Progress, TaskID
 
@@ -16,6 +17,9 @@ from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
 from engram.eval.results import next_short_id, save_results
 from engram.models.run import RunResult
+
+if TYPE_CHECKING:
+    from engram.models.input import InputData
 from engram.observability.logging import log_event
 from engram.observability.output_mode import get_output_mode
 from engram.runners.registry import get_runner
@@ -67,7 +71,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     source_total = len(inputs)
     if limit is not None and limit < source_total:
         rng = random.Random(sample_seed)
-        inputs = sorted(rng.sample(inputs, limit))
+        inputs = sorted(rng.sample(inputs, limit), key=lambda inp: inp.filename)
         sampling = {'limit': limit, 'sample_seed': sample_seed, 'source_total': source_total}
         log_event('sampling', limit=limit, sample_seed=sample_seed, source_total=source_total)
 
@@ -79,9 +83,9 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     mode = get_output_mode()
     total_triggers = len(inputs) * repeats
 
-    def _run_single(filename: str, content: str, repeat_index: int) -> RunResult:
-        result = runner.trigger(content, impl_config, impl_dir)
-        result.input_file = filename
+    def _run_single(inp: InputData, repeat_index: int) -> RunResult:
+        result = runner.trigger(inp, impl_config, impl_dir)
+        result.input_file = inp.filename
         result.repeat_index = repeat_index
         return result
 
@@ -122,7 +126,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
 
 
 def _run_concurrent(
-    inputs: list[tuple[str, str]],
+    inputs: list[InputData],
     run_fn: Callable[..., RunResult],
     concurrency: int,
     repeats: int = 1,
@@ -133,11 +137,7 @@ def _run_concurrent(
     results: dict[tuple[int, int], RunResult] = {}
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {
-            executor.submit(run_fn, filename, content, r): (i, r)
-            for i, (filename, content) in enumerate(inputs)
-            for r in range(repeats)
-        }
+        futures = {executor.submit(run_fn, inp, r): (i, r) for i, inp in enumerate(inputs) for r in range(repeats)}
 
         for future in as_completed(futures):
             i, r = futures[future]
@@ -145,7 +145,7 @@ def _run_concurrent(
                 results[(i, r)] = future.result()
             except Exception as e:  # noqa: BLE001
                 results[(i, r)] = RunResult(
-                    input_file=inputs[i][0],
+                    input_file=inputs[i].filename,
                     status='failed',
                     error=str(e),
                     repeat_index=r,

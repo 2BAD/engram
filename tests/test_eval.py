@@ -24,8 +24,10 @@ def test_load_dataset_inputs(tmp_path: Path):
 
     inputs = load_dataset_inputs(tmp_path, 'test-ds')
     assert len(inputs) == 2
-    assert inputs[0] == ('001.txt', 'hello')
-    assert inputs[1] == ('002.txt', 'world')
+    assert inputs[0].filename == '001.txt'
+    assert inputs[0].text == 'hello'
+    assert inputs[1].filename == '002.txt'
+    assert inputs[1].text == 'world'
 
 
 def test_load_dataset_inputs_missing(tmp_path: Path):

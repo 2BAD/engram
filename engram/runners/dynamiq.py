@@ -24,6 +24,7 @@ from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
+    from engram.models.input import InputData
 
 
 class DynamiqRunner(Runner):
@@ -76,7 +77,7 @@ class DynamiqRunner(Runner):
             return f'No hostname found for app {self._app_id}'
         return None
 
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
+    def trigger(self, input_data: InputData, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Trigger a Dynamiq workflow and collect the result."""
         error = self._ensure_initialized(impl_config, impl_dir)
         if error:
@@ -85,8 +86,11 @@ class DynamiqRunner(Runner):
         rc = impl_config.runner_config
         poll_config = (float(rc.get('poll_timeout', '600')), float(rc.get('poll_interval', '15')))
 
+        # Dynamiq HTTP trigger expects text input.
+        text = input_data.text if input_data.text is not None else input_data.text_for_display
+
         start = time.monotonic()
-        return self._trigger_and_collect(input_data, start, poll_config)
+        return self._trigger_and_collect(text, start, poll_config)
 
     def _trigger_and_collect(self, input_data: str, start: float, poll_config: tuple[float, float]) -> RunResult:
         """Send the HTTP trigger and handle sync/async response paths."""

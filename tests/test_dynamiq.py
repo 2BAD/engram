@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from engram.config.sync import pull_config
 from engram.models.implementation import ConfigManagement, ImplementationConfig
+from engram.models.input import InputData
 from engram.runners.dynamiq import (
     DynamiqRunner,
     _build_result_from_output,
@@ -193,7 +194,7 @@ def test_dynamiq_runner_trigger_sync(tmp_path: Path):
         patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response),
     ):
         runner = DynamiqRunner()
-        result = runner.trigger('test input', impl_config, tmp_path)
+        result = runner.trigger(InputData(filename='test', text='test input'), impl_config, tmp_path)
 
     assert result.status == 'succeeded'
     assert result.output == {'topic': 'A'}
@@ -214,8 +215,8 @@ def test_dynamiq_runner_caches_hostname(tmp_path: Path):
         patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response),
     ):
         runner = DynamiqRunner()
-        runner.trigger('input 1', impl_config, tmp_path)
-        runner.trigger('input 2', impl_config, tmp_path)
+        runner.trigger(InputData(filename='test1', text='input 1'), impl_config, tmp_path)
+        runner.trigger(InputData(filename='test2', text='input 2'), impl_config, tmp_path)
 
     # management_api called once for hostname, not twice
     assert mock_mgmt.call_count == 1

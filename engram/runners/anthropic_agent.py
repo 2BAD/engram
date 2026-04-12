@@ -13,12 +13,13 @@ from engram.runners.base import Runner
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
+    from engram.models.input import InputData
 
 
 class AnthropicAgentRunner(Runner):
     """Runner that imports and executes a local Python agent function."""
 
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
+    def trigger(self, input_data: InputData, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Import and call the agent entry point."""
         rc = impl_config.runner_config
         entry_point = rc.get('entry_point', '')
@@ -45,9 +46,12 @@ class AnthropicAgentRunner(Runner):
         except (ImportError, AttributeError) as e:
             return RunResult(input_file='', status='failed', error=f'Failed to load agent: {e}')
 
+        # Agent functions receive text content; binary inputs get a display summary.
+        agent_input = input_data.text if input_data.text is not None else input_data.text_for_display
+
         start = time.monotonic()
         try:
-            result = func(input_data)
+            result = func(agent_input)
         except Exception as e:  # noqa: BLE001
             latency = (time.monotonic() - start) * 1000
             return RunResult(input_file='', status='failed', latency_ms=latency, error=str(e))

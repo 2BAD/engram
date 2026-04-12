@@ -19,6 +19,7 @@ from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
+    from engram.models.input import InputData
 
 
 class OpenAIApiRunner(Runner):
@@ -35,7 +36,7 @@ class OpenAIApiRunner(Runner):
         key = impl_config.runner_config.get('api_key_env')
         return [key] if key else []
 
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
+    def trigger(self, input_data: InputData, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Send input to the OpenAI API in JSON mode and parse the response."""
         rc = impl_config.runner_config
         env_var = rc['api_key_env']
@@ -48,10 +49,10 @@ class OpenAIApiRunner(Runner):
         temperature = float(rc.get('temperature', '0'))
 
         system_prompt = _load_system_prompt(impl_dir)
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         if system_prompt:
             messages.append({'role': 'system', 'content': system_prompt})
-        messages.append({'role': 'user', 'content': input_data})
+        messages.append({'role': 'user', 'content': _build_openai_content(input_data)})
 
         client = openai.OpenAI(api_key=api_key)
 
@@ -124,6 +125,39 @@ class OpenAIApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _build_openai_content(input_data: InputData) -> str | list[dict[str, Any]]:
+    """
+    Build the user message content for the OpenAI Chat Completions API.
+
+    Text inputs are passed as a plain string. Images are encoded as
+    data-URI image_url blocks. PDFs use the file content part type.
+    """
+    if not input_data.is_binary:
+        return input_data.text or ''
+
+    if input_data.is_image:
+        data_uri = f'data:{input_data.media_type};base64,{input_data.data_base64}'
+        return [
+            {
+                'type': 'image_url',
+                'image_url': {'url': data_uri},
+            },
+        ]
+
+    if input_data.is_document:
+        return [
+            {
+                'type': 'file',
+                'file': {
+                    'filename': input_data.filename,
+                    'file_data': f'data:{input_data.media_type};base64,{input_data.data_base64}',
+                },
+            },
+        ]
+
+    return input_data.text_for_display
 
 
 def _load_system_prompt(impl_dir: Path) -> str:

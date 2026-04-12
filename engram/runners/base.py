@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from engram.models.config_snapshot import ConfigSnapshot
     from engram.models.implementation import ImplementationConfig
+    from engram.models.input import InputData
     from engram.models.run import RunResult
 
 
@@ -16,7 +17,7 @@ class Runner(ABC):
     """Base class for all workflow runners."""
 
     @abstractmethod
-    def trigger(self, input_data: str, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
+    def trigger(self, input_data: InputData, impl_config: ImplementationConfig, impl_dir: Path) -> RunResult:
         """Run the workflow with a single input and return the result."""
 
     @abstractmethod
