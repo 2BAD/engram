@@ -2,7 +2,7 @@
 
 AI workflow evaluation and experimentation framework.
 
-Teams building AI-powered features need to iterate on prompts and models, measure the impact of each change, compare alternatives across different platforms, and track what worked. Today this is done through spreadsheets, ad-hoc scripts, and platform UIs with no version history. Engram provides a structured experimentation loop: define what your workflow does, run it against labeled data, score the results, track experiments, and compare alternatives. Git is the version tracker, platforms are interchangeable, and cost is a first-class metric alongside quality.
+Teams building AI-powered features need to iterate on prompts and models, measure impact, compare alternatives across platforms, and track what worked. Today that's spreadsheets, ad-hoc scripts, and platform UIs with no version history. Engram gives you a repeatable loop: define what your workflow does, run it against labeled data, score the results, track experiments, and compare alternatives. Git tracks versions, platforms are swappable, and cost is a first-class metric alongside quality.
 
 ## Install
 
@@ -16,7 +16,7 @@ uv tool install git+https://github.com/2BAD/engram
 
 ## Quick start
 
-`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations of the same workflow (`classify-anthropic` and `classify-openai`) so you can compare platforms immediately, a tiny labeled `sample` dataset.
+`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations (`classify-anthropic` and `classify-openai`) so you can compare platforms right away, and a tiny labeled `sample` dataset.
 
 ```sh
 engram init                                         # scaffold project + two implementations + sample dataset
@@ -29,7 +29,7 @@ engram score 2 --save
 engram compare 1 2                                  # accuracy, precision, recall, F1 and cost side by side
 ```
 
-Each run is assigned a short numeric id (`#1`, `#2`, ...) that you can use in place of the full experiment identifier. You can also use `@` for the most recent run, `@~1` for the previous one, and scope with `--impl`/`--dataset` (e.g. `engram score @ --impl classify-anthropic`). Add `--label "prompt-v2"` to `engram run` to tag runs with a human-readable description.
+Each run gets a short numeric id (`#1`, `#2`, ...) that you can use in place of the full experiment identifier. You can also use `@` for the most recent run, `@~1` for the previous one, and scope with `--impl`/`--dataset` (e.g. `engram score @ --impl classify-anthropic`). Add `--label "prompt-v2"` to `engram run` to tag runs with a description.
 
 Rename the implementations and dataset once you replace the example with your own workflow.
 
@@ -54,8 +54,8 @@ uv run poe typecheck
 
 ## How it relates to other tools
 
-**Langfuse** is an observability platform. It traces every LLM call in production, tracks latency and cost per user/session, and provides a dashboard for monitoring live systems. It answers: "what's happening in prod, and is it good?"
+**Langfuse** is an observability platform. It traces every LLM call in production, tracks latency and cost per user/session, and gives you a dashboard for monitoring live systems. "What's happening in prod, and is it good?"
 
-**DeepEval** is an evaluation library. It provides LLM-as-judge metrics (faithfulness, hallucination, toxicity, etc.) and integrates with pytest. It answers: "given these outputs, how good are they?"
+**DeepEval** is an evaluation library. It ships LLM-as-judge metrics (faithfulness, hallucination, toxicity, etc.) and plugs into pytest. "Given these outputs, how good are they?"
 
-**Engram** is an experimentation framework. It compares AI workflow implementations across platforms: sync configs, run evals against labeled datasets, score with deterministic metrics, track experiments in git, and diff what changed between any two runs. It answers: "which implementation is better, and what changed?"
+**Engram** is an experimentation framework. It compares AI workflow implementations across platforms: sync configs, run evals against labeled datasets, score with deterministic metrics, track experiments in git, and diff what changed between any two runs. "Which implementation is better, and what changed?"
