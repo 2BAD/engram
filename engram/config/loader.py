@@ -4,6 +4,7 @@ from pathlib import Path
 
 import yaml
 
+from engram.models.analysis import AnalysisConfig
 from engram.models.dataset import DatasetConfig
 from engram.models.implementation import ConfigManagement, ImplementationConfig
 from engram.models.project import ProjectConfig
@@ -15,10 +16,20 @@ from engram.scoring.registry import validate_scorer_name
 def load_project(root: Path) -> ProjectConfig:
     """Load engram.yaml from the project root."""
     raw = yaml.safe_load((root / 'engram.yaml').read_text())
+
+    analysis = None
+    if 'analysis' in raw:
+        a = raw['analysis']
+        analysis = AnalysisConfig(
+            model=a['model'],
+            max_examples=a.get('max_examples', 30),
+        )
+
     return ProjectConfig(
         name=raw['name'],
         description=raw.get('description', ''),
         pricing_overrides=raw.get('pricing_overrides', {}),
+        analysis=analysis,
     )
 
 

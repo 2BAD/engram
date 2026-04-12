@@ -15,6 +15,7 @@ from .commands import (
     config_app,
     estimate_command,
     experiments_app,
+    explain_command,
     init_command,
     run_command,
     score_command,
@@ -56,6 +57,7 @@ app.add_typer(baseline_app)
 app.command(name='compare')(compare_command)
 app.add_typer(config_app)
 app.command(name='estimate')(estimate_command)
+app.command(name='explain')(explain_command)
 app.command(name='run')(run_command)
 app.add_typer(experiments_app)
 app.command(name='init')(init_command)
