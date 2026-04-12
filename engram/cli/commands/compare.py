@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_pair, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.experiment_ref import format_ref_medium
@@ -84,24 +85,41 @@ def _resolve_compare_pair(
 def compare_command(
     experiment_a: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively from recent runs.'),
+        typer.Argument(
+            help='Experiment ID, #N, or @ / @~N. Omit to pick interactively from recent runs.',
+            autocompletion=complete_experiment_ids,
+        ),
     ] = None,
     experiment_b: Annotated[
         str | None,
-        typer.Argument(help='Optional second experiment ID. Defaults to the workflow baseline.'),
+        typer.Argument(
+            help='Optional second experiment ID. Defaults to the workflow baseline.',
+            autocompletion=complete_experiment_ids,
+        ),
     ] = None,
     against: Annotated[
         str | None,
-        typer.Option('--against', help='Compare against this specific experiment instead of the workflow baseline'),
+        typer.Option(
+            '--against',
+            help='Compare against this specific experiment instead of the workflow baseline',
+            autocompletion=complete_experiment_ids,
+        ),
     ] = None,
     prompts: Annotated[bool, typer.Option('--prompts', help='Show full prompt diffs')] = False,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
+        typer.Option(
+            '--impl',
+            '-i',
+            help='Scope @ / @~N resolution to this implementation',
+            autocompletion=complete_implementations,
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
+        typer.Option(
+            '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Compare two experiments: accuracy deltas, cost, config diffs."""

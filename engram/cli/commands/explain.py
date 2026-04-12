@@ -18,6 +18,7 @@ from engram.analysis.analyzer import (
 )
 from engram.analysis.context import build_comparison_context, build_single_context
 from engram.analysis.prompts import EXPLAIN_SYSTEM_PROMPT, build_comparison_message, build_single_message
+from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.cli.prompts import ask_confirm, is_interactive
 from engram.config.discovery import find_project_root
@@ -30,11 +31,15 @@ console = Console()
 def explain_command(
     experiment_a: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(
+            help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.', autocompletion=complete_experiment_ids
+        ),
     ] = None,
     experiment_b: Annotated[
         str | None,
-        typer.Argument(help='Optional second experiment for comparison analysis.'),
+        typer.Argument(
+            help='Optional second experiment for comparison analysis.', autocompletion=complete_experiment_ids
+        ),
     ] = None,
     yes: Annotated[
         bool,
@@ -46,11 +51,18 @@ def explain_command(
     ] = False,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
+        typer.Option(
+            '--impl',
+            '-i',
+            help='Scope @ / @~N resolution to this implementation',
+            autocompletion=complete_implementations,
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
+        typer.Option(
+            '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Explain experiment results using an LLM."""

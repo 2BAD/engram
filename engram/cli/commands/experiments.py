@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from engram.cli.completions import complete_datasets, complete_implementations
 from engram.config.discovery import find_project_root
 from engram.display.experiment_ref import format_when
 from engram.observability.output_mode import get_output_mode
@@ -31,11 +32,11 @@ def list_experiments(
     ] = 20,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Filter by implementation name.'),
+        typer.Option('--impl', '-i', help='Filter by implementation name.', autocompletion=complete_implementations),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Filter by dataset name.'),
+        typer.Option('--dataset', '-d', help='Filter by dataset name.', autocompletion=complete_datasets),
     ] = None,
 ) -> None:
     """List recent scored experiments, most recent first."""

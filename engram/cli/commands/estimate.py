@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from engram.cli.completions import complete_datasets, complete_implementations
 from engram.cli.prompts import ask_dataset, ask_implementation, is_interactive
 from engram.config.discovery import find_project_root
 from engram.cost.estimator import estimate_cost
@@ -18,11 +19,15 @@ console = Console()
 def estimate_command(
     implementation: Annotated[
         str | None,
-        typer.Argument(help='Implementation name. Omit to pick interactively.'),
+        typer.Argument(
+            help='Implementation name. Omit to pick interactively.', autocompletion=complete_implementations
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Dataset name. Omit to pick interactively.'),
+        typer.Option(
+            '--dataset', '-d', help='Dataset name. Omit to pick interactively.', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Estimate cost for running an implementation against a dataset."""

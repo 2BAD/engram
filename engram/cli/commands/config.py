@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from engram.cli.completions import complete_implementations
 from engram.config.discovery import discover_implementations, find_project_root
 from engram.config.loader import load_implementation
 from engram.config.sync import deploy_config, diff_config, pull_config, push_config
@@ -16,7 +17,7 @@ config_app = typer.Typer(name='config', help='Manage hosted platform configs.', 
 
 @config_app.command()
 def pull(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
+    implementation: Annotated[str, typer.Argument(help='Implementation name', autocompletion=complete_implementations)],
 ) -> None:
     """Pull config from hosted platform to local files."""
     root = find_project_root()
@@ -35,7 +36,7 @@ def pull(
 
 @config_app.command()
 def diff(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
+    implementation: Annotated[str, typer.Argument(help='Implementation name', autocompletion=complete_implementations)],
 ) -> None:
     """Compare local config vs remote platform."""
     root = find_project_root()
@@ -63,7 +64,7 @@ def diff(
 
 @config_app.command()
 def push(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
+    implementation: Annotated[str, typer.Argument(help='Implementation name', autocompletion=complete_implementations)],
     dry_run: Annotated[bool, typer.Option('--dry-run', help='Show changes without saving')] = False,
 ) -> None:
     """Push local config changes to hosted platform."""
@@ -89,7 +90,7 @@ def push(
 
 @config_app.command()
 def deploy(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
+    implementation: Annotated[str, typer.Argument(help='Implementation name', autocompletion=complete_implementations)],
     dry_run: Annotated[bool, typer.Option('--dry-run', help='Show changes without deploying')] = False,
 ) -> None:
     """Push config changes and deploy to hosted platform."""

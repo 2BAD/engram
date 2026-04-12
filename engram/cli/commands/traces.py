@@ -9,6 +9,7 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 
+from engram.cli.completions import complete_implementations
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_implementation
 from engram.runners.dynamiq_api import fetch_deployment_timeline, get_trace, management_api, match_trace_version
@@ -118,7 +119,7 @@ def _fetch_traces(
 
 @traces_app.command()
 def pull(
-    implementation: Annotated[str, typer.Argument(help='Implementation name')],
+    implementation: Annotated[str, typer.Argument(help='Implementation name', autocompletion=complete_implementations)],
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Concurrent fetches')] = 10,
 ) -> None:
     """Pull and cache traces from hosted platform."""

@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.baseline import print_baseline_status
@@ -62,15 +63,24 @@ def _resolve(
 def set_baseline(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(
+            help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.', autocompletion=complete_experiment_ids
+        ),
     ] = None,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
+        typer.Option(
+            '--impl',
+            '-i',
+            help='Scope @ / @~N resolution to this implementation',
+            autocompletion=complete_implementations,
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
+        typer.Option(
+            '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Set this experiment as the workflow baseline (the frozen anchor)."""
@@ -86,15 +96,24 @@ def set_baseline(
 def promote_reference(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.'),
+        typer.Argument(
+            help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.', autocompletion=complete_experiment_ids
+        ),
     ] = None,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
+        typer.Option(
+            '--impl',
+            '-i',
+            help='Scope @ / @~N resolution to this implementation',
+            autocompletion=complete_implementations,
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
+        typer.Option(
+            '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Promote this experiment to be its implementation's current reference."""

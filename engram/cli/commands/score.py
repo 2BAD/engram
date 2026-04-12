@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.experiment_ref import format_ref_medium
@@ -25,16 +26,26 @@ console = Console()
 def score_command(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, #N, or @ / @~N. Omit to pick interactively from recent runs.'),
+        typer.Argument(
+            help='Experiment ID, #N, or @ / @~N. Omit to pick interactively from recent runs.',
+            autocompletion=complete_experiment_ids,
+        ),
     ] = None,
     save: Annotated[bool, typer.Option('--save', help='Save report and update experiment index')] = False,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
+        typer.Option(
+            '--impl',
+            '-i',
+            help='Scope @ / @~N resolution to this implementation',
+            autocompletion=complete_implementations,
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
+        typer.Option(
+            '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
+        ),
     ] = None,
 ) -> None:
     """Score experiment results against dataset labels."""

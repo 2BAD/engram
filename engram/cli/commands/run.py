@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from engram.cli.completions import complete_datasets, complete_implementations
 from engram.cli.prompts import ask_dataset, ask_implementation, ask_label, is_interactive
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_implementation
@@ -18,11 +19,15 @@ console = Console()
 def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     implementation: Annotated[
         str | None,
-        typer.Argument(help='Implementation name. Omit to pick interactively.'),
+        typer.Argument(
+            help='Implementation name. Omit to pick interactively.', autocompletion=complete_implementations
+        ),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Dataset name. Omit to pick interactively.'),
+        typer.Option(
+            '--dataset', '-d', help='Dataset name. Omit to pick interactively.', autocompletion=complete_datasets
+        ),
     ] = None,
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,
     limit: Annotated[
