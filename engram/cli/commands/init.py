@@ -82,7 +82,7 @@ runner: openai
 
 runner_config:
   api_key_env: OPENAI_API_KEY
-  model: gpt-5.4-nano
+  model: gpt-5.4-mini
   max_tokens: "1024"
   # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
   temperature: "0"

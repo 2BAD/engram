@@ -477,7 +477,7 @@ def _make_openai_impl_config(**overrides: object) -> ImplementationConfig:
         'runner': 'openai',
         'runner_config': {
             'api_key_env': 'OPENAI_API_KEY',
-            'model': 'gpt-5.4-nano',
+            'model': 'gpt-5.4-mini',
             'max_tokens': '4096',
         },
         'config_management': ConfigManagement(mode='local'),
@@ -493,7 +493,7 @@ def _make_openai_impl_config(**overrides: object) -> ImplementationConfig:
 
 
 _OPENAI_FAKE_PRICING = {
-    'gpt-5.4-nano': {
+    'gpt-5.4-mini': {
         'input_cost_per_token': 0.0000001,
         'output_cost_per_token': 0.0000004,
     },
@@ -565,7 +565,7 @@ def test_openai_runner_forwards_explicit_temperature(tmp_path: Path):
     impl_config = _make_openai_impl_config(
         runner_config={
             'api_key_env': 'OPENAI_API_KEY',
-            'model': 'gpt-5.4-nano',
+            'model': 'gpt-5.4-mini',
             'max_tokens': '4096',
             'temperature': '0.5',
         },
@@ -754,7 +754,7 @@ def test_openai_runner_snapshot(tmp_path: Path):
     runner = OpenAIApiRunner()
     snap = runner.snapshot_config(impl_config, tmp_path)
 
-    assert snap.models == ['gpt-5.4-nano']
+    assert snap.models == ['gpt-5.4-mini']
     assert 'system.md' in snap.prompts
     assert 'api_key_env' not in snap.runner_config
 
@@ -770,7 +770,7 @@ def test_openai_runner_configure_pricing_overrides_rates(tmp_path: Path):
 
     # Doubled rates vs _OPENAI_FAKE_PRICING.
     overridden = {
-        'gpt-5.4-nano': {
+        'gpt-5.4-mini': {
             'input_cost_per_token': 0.0000002,
             'output_cost_per_token': 0.0000008,
         },
@@ -783,9 +783,9 @@ def test_openai_runner_configure_pricing_overrides_rates(tmp_path: Path):
     ):
         mock_cls.return_value.chat.completions.create.return_value = mock_response
         runner = OpenAIApiRunner()
-        runner.configure_pricing({'gpt-5.4-nano': {'input_cost_per_token': 0.0000002}})
+        runner.configure_pricing({'gpt-5.4-mini': {'input_cost_per_token': 0.0000002}})
         result = runner.trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
 
-    assert mock_load.call_args.kwargs['overrides']['gpt-5.4-nano']['input_cost_per_token'] == 0.0000002
+    assert mock_load.call_args.kwargs['overrides']['gpt-5.4-mini']['input_cost_per_token'] == 0.0000002
     # 100 * 0.0000002 + 50 * 0.0000008 = 0.00002 + 0.00004 = 0.00006
     assert result.cost_usd == pytest.approx(0.00006)
