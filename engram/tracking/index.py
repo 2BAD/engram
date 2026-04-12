@@ -33,7 +33,7 @@ def append_to_index(root: Path, report: EvalReport) -> None:
 
     macro_f1 = sum(fm.f1 for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
 
-    summary = {
+    summary: dict[str, Any] = {
         'short_id': metadata['short_id'],
         'id': report.experiment_id,
         'implementation': metadata['implementation'],
@@ -86,6 +86,10 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     output_tokens = [r.usage.completion_tokens for r in results if r.usage.completion_tokens > 0]
     if output_tokens:
         summary['avg_output_tokens'] = round(sum(output_tokens) / len(output_tokens))
+
+    label = metadata.get('label')
+    if label:
+        summary['label'] = label
 
     index_path = root / 'experiments' / 'experiments.jsonl'
     existing = read_index(root)

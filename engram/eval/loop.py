@@ -28,6 +28,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     limit: int | None = None,
     sample_seed: int = 0,
     repeats: int = 1,
+    label: str | None = None,
 ) -> tuple[str, int]:
     """
     Run a workflow against a dataset, save results.
@@ -113,6 +114,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
         dataset=dataset_name,
         results=results,
         sampling=sampling,
+        label=label,
     )
 
     return experiment_id, short_id

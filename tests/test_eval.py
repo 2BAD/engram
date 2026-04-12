@@ -144,6 +144,30 @@ def _write_results_with_short_id(root: Path, exp_id: str, short_id: int | None) 
     (exp_dir / 'results.json').write_text(json.dumps(data))
 
 
+def test_save_results_stores_label_when_provided(tmp_path: Path):
+    exp_dir = tmp_path / 'experiments' / 'labeled'
+    exp_dir.mkdir(parents=True)
+    save_results(exp_dir, 'labeled', 1, 'impl', 'ds', [], label='prompt-v2')
+    metadata, _ = load_results(exp_dir)
+    assert metadata['label'] == 'prompt-v2'
+
+
+def test_save_results_strips_label_whitespace(tmp_path: Path):
+    exp_dir = tmp_path / 'experiments' / 'trimmed'
+    exp_dir.mkdir(parents=True)
+    save_results(exp_dir, 'trimmed', 1, 'impl', 'ds', [], label='  spaced  ')
+    metadata, _ = load_results(exp_dir)
+    assert metadata['label'] == 'spaced'
+
+
+def test_save_results_omits_label_when_none(tmp_path: Path):
+    exp_dir = tmp_path / 'experiments' / 'nolabel'
+    exp_dir.mkdir(parents=True)
+    save_results(exp_dir, 'nolabel', 1, 'impl', 'ds', [])
+    metadata, _ = load_results(exp_dir)
+    assert 'label' not in metadata
+
+
 def test_next_short_id_starts_at_one_for_empty_project(tmp_path: Path):
     """A project with no experiments dir returns short_id 1."""
     assert next_short_id(tmp_path) == 1

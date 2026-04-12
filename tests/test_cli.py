@@ -148,6 +148,24 @@ def test_run_command_prints_next_step_hint(tmp_path: Path, monkeypatch: pytest.M
     assert 'engram experiments list' in result.output
 
 
+def test_run_command_with_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram run --label echoes the label in the completion message."""
+    monkeypatch.chdir(tmp_path)
+    init_result = runner.invoke(app, ['init'])
+    assert init_result.exit_code == 0
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
+    monkeypatch.setattr(
+        'engram.cli.commands.run.run_eval',
+        lambda *_args, **_kwargs: ('fake-id', 8),
+    )
+
+    result = runner.invoke(app, ['run', 'classify-anthropic', '--dataset', 'sample', '--label', 'prompt-v2'])
+
+    assert result.exit_code == 0
+    assert '#8' in result.output
+    assert 'prompt-v2' in result.output
+
+
 def test_run_command_preflight_rejects_missing_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """engram run fails fast with a friendly message when the runner's API key env var is missing."""
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)

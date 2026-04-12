@@ -77,11 +77,15 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
             console.print('[dim]No experiments match the given filters.[/dim]')
         return
 
+    has_labels = any(entry.get('label') for entry in entries)
+
     table = Table(title='Experiments')
     table.add_column('#', style='bold cyan', justify='right')
     table.add_column('When', justify='right')
     table.add_column('Impl', overflow='fold')
     table.add_column('Dataset', overflow='fold')
+    if has_labels:
+        table.add_column('Label', overflow='fold')
     table.add_column('Acc', justify='right')
     table.add_column('F1', justify='right')
     table.add_column('Cost', justify='right')
@@ -89,16 +93,21 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
 
     for entry in entries:
         short_id = entry.get('short_id')
-        table.add_row(
+        row = [
             str(short_id) if short_id is not None else '[dim]—[/dim]',
             format_when(entry.get('timestamp', '')),
             entry.get('implementation', ''),
             entry.get('dataset', ''),
+        ]
+        if has_labels:
+            row.append(entry.get('label', '') or '[dim]—[/dim]')
+        row.extend([
             _format_pct(entry.get('macro_accuracy')),
             _format_pct(entry.get('macro_f1')),
             _format_cost(entry.get('cost', {}).get('total_usd')),
             str(entry.get('matched_examples', '')),
-        )
+        ])
+        table.add_row(*row)
 
     console.print(table)
 

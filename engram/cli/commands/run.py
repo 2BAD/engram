@@ -14,7 +14,7 @@ from engram.runners.registry import get_runner
 console = Console()
 
 
-def run_command(
+def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     implementation: Annotated[str, typer.Argument(help='Implementation name')],
     dataset: Annotated[str, typer.Option('--dataset', '-d', help='Dataset name')],
     concurrency: Annotated[int, typer.Option('--concurrency', '-c', help='Number of concurrent runs')] = 5,
@@ -38,6 +38,14 @@ def run_command(
             'Total triggers = inputs * repeats; concurrency is not scaled.',
         ),
     ] = 1,
+    label: Annotated[
+        str | None,
+        typer.Option(
+            '--label',
+            '-l',
+            help='Optional human-readable label for this run (e.g. "prompt-v2", "before-refactor").',
+        ),
+    ] = None,
 ) -> None:
     """Evaluate a workflow implementation against a dataset."""
     root = find_project_root()
@@ -69,8 +77,12 @@ def run_command(
         limit=limit,
         sample_seed=sample_seed,
         repeats=repeats,
+        label=label,
     )
-    console.print(f'[green]Experiment complete:[/green] #{short_id} [dim]{implementation}/{dataset}[/dim]')
+    label_suffix = f' \\[{label.strip()}]' if label else ''
+    console.print(
+        f'[green]Experiment complete:[/green] #{short_id} [dim]{implementation}/{dataset}{label_suffix}[/dim]'
+    )
     console.print()
     console.print('[bold]Next steps:[/bold]')
     console.print(f'  Score the run:   [cyan]engram score {short_id} --save[/cyan]')

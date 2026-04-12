@@ -18,6 +18,7 @@ def save_results(  # noqa: PLR0913 — metadata fields are flat by design
     dataset: str,
     results: list[RunResult],
     sampling: dict | None = None,
+    label: str | None = None,
 ) -> None:
     """Save experiment results to exp_dir/results.json."""
     data: dict = {
@@ -33,6 +34,8 @@ def save_results(  # noqa: PLR0913 — metadata fields are flat by design
     }
     if sampling is not None:
         data['sampling'] = sampling
+    if label is not None:
+        data['label'] = label.strip()
     (exp_dir / 'results.json').write_text(json.dumps(data, indent=2))
 
 

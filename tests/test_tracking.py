@@ -157,6 +157,27 @@ def test_append_to_index_records_short_id(tmp_path: Path):
     assert read_index(tmp_path)[0]['short_id'] == 42
 
 
+def test_append_to_index_carries_label(tmp_path: Path):
+    """A label in results.json metadata is copied to the index row."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-labeled', 'classify-api', 'test-ds', 'A', short_id=1)
+    results_path = tmp_path / 'experiments' / 'exp-labeled' / 'results.json'
+    data = json.loads(results_path.read_text())
+    data['label'] = 'prompt-v2'
+    results_path.write_text(json.dumps(data))
+
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-labeled', field_metrics=[]))
+    assert read_index(tmp_path)[0]['label'] == 'prompt-v2'
+
+
+def test_append_to_index_omits_label_when_absent(tmp_path: Path):
+    """Index rows don't get an empty or null label field when metadata has none."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-nolabel', 'classify-api', 'test-ds', 'A', short_id=1)
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-nolabel', field_metrics=[]))
+    assert 'label' not in read_index(tmp_path)[0]
+
+
 # --- resolve_experiment_id ---
 
 
@@ -311,6 +332,31 @@ def test_resolve_at_empty_scope_mentions_filters(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError, match=r'impl=openai'):
         resolve_experiment_id(tmp_path, '@', impl='openai')
+
+
+def test_format_ref_medium_with_label():
+    """format_ref_medium appends the label in brackets when present."""
+    from engram.display.experiment_ref import format_ref_medium  # noqa: PLC0415
+
+    entry = {'short_id': 7, 'implementation': 'anthropic', 'dataset': 'sample', 'label': 'prompt-v2'}
+    assert format_ref_medium(entry) == '#7 anthropic/sample \\[prompt-v2]'
+
+
+def test_format_ref_medium_without_label():
+    """format_ref_medium omits the bracket suffix when label is absent."""
+    from engram.display.experiment_ref import format_ref_medium  # noqa: PLC0415
+
+    entry = {'short_id': 7, 'implementation': 'anthropic', 'dataset': 'sample'}
+    assert format_ref_medium(entry) == '#7 anthropic/sample'
+
+
+def test_format_ref_medium_escapes_rich_markup_in_label():
+    """Labels containing Rich markup characters are escaped so they render literally."""
+    from engram.display.experiment_ref import format_ref_medium  # noqa: PLC0415
+
+    entry = {'short_id': 1, 'implementation': 'a', 'dataset': 'b', 'label': '[bold]test'}
+    ref = format_ref_medium(entry)
+    assert '\\[bold]' in ref
 
 
 def test_resolve_short_id_ignores_impl_filter(tmp_path: Path):

@@ -227,6 +227,43 @@ def test_experiments_list_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert parsed[0]['macro_f1'] == 0.85
 
 
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_label_column_shown_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When at least one entry has a label, the Label column appears for all rows."""
+    _seed_index(
+        tmp_path,
+        [
+            _make_entry('a', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=1),
+            _make_entry('b', 'impl', 'sample', '2026-04-01T12:00:00Z', 0.8, 0.8, 0.02, short_id=2),
+        ],
+    )
+    index_path = tmp_path / 'experiments' / 'experiments.jsonl'
+    lines = index_path.read_text().strip().splitlines()
+    entry_a = json.loads(lines[0])
+    entry_a['label'] = 'prompt-v2'
+    index_path.write_text(json.dumps(entry_a) + '\n' + lines[1] + '\n')
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert 'Label' in result.output
+    assert 'prompt-v2' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_label_column_hidden_when_no_labels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When no entry has a label, the Label column is not shown at all."""
+    _seed_index(
+        tmp_path,
+        [_make_entry('a', 'impl', 'sample', '2026-04-01T12:00:00Z', 0.9, 0.9, 0.01, short_id=1)],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert 'Label' not in result.output
+
+
 def test_experiments_list_no_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Outside a project, the command exits 1 with a clear message."""
     monkeypatch.chdir(tmp_path)
