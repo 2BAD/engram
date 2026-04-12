@@ -17,8 +17,8 @@ from engram.runners.dynamiq import (
 from engram.runners.registry import get_runner
 
 
-def _make_dynamiq_config(**overrides) -> ImplementationConfig:
-    defaults = {
+def _make_dynamiq_config(**overrides: object) -> ImplementationConfig:
+    defaults: dict[str, object] = {
         'workflow': 'classify',
         'platform': 'hosted',
         'runner': 'dynamiq',
@@ -33,7 +33,13 @@ def _make_dynamiq_config(**overrides) -> ImplementationConfig:
         ),
     }
     defaults.update(overrides)
-    return ImplementationConfig(**defaults)
+    return ImplementationConfig(
+        workflow=str(defaults['workflow']),
+        platform=str(defaults['platform']),
+        runner=str(defaults['runner']),
+        runner_config=defaults.get('runner_config', {}),  # type: ignore[arg-type]
+        config_management=defaults.get('config_management', ConfigManagement()),  # type: ignore[arg-type]
+    )
 
 
 # --- Registry ---

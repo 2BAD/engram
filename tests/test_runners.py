@@ -60,8 +60,8 @@ def test_parse_json_array_rejected():
 # --- Anthropic API Runner ---
 
 
-def _make_impl_config(**overrides) -> ImplementationConfig:
-    defaults = {
+def _make_impl_config(**overrides: object) -> ImplementationConfig:
+    defaults: dict[str, object] = {
         'workflow': 'classify',
         'platform': 'api',
         'runner': 'anthropic',
@@ -73,7 +73,13 @@ def _make_impl_config(**overrides) -> ImplementationConfig:
         'config_management': ConfigManagement(mode='local'),
     }
     defaults.update(overrides)
-    return ImplementationConfig(**defaults)
+    return ImplementationConfig(
+        workflow=str(defaults['workflow']),
+        platform=str(defaults['platform']),
+        runner=str(defaults['runner']),
+        runner_config=defaults.get('runner_config', {}),  # type: ignore[arg-type]
+        config_management=defaults.get('config_management', ConfigManagement()),  # type: ignore[arg-type]
+    )
 
 
 _FAKE_PRICING = {
@@ -463,8 +469,8 @@ def test_agent_runner_missing_file(tmp_path: Path):
 # --- OpenAI API Runner ---
 
 
-def _make_openai_impl_config(**overrides) -> ImplementationConfig:
-    defaults = {
+def _make_openai_impl_config(**overrides: object) -> ImplementationConfig:
+    defaults: dict[str, object] = {
         'workflow': 'classify',
         'platform': 'api',
         'runner': 'openai',
@@ -476,7 +482,13 @@ def _make_openai_impl_config(**overrides) -> ImplementationConfig:
         'config_management': ConfigManagement(mode='local'),
     }
     defaults.update(overrides)
-    return ImplementationConfig(**defaults)
+    return ImplementationConfig(
+        workflow=str(defaults['workflow']),
+        platform=str(defaults['platform']),
+        runner=str(defaults['runner']),
+        runner_config=defaults.get('runner_config', {}),  # type: ignore[arg-type]
+        config_management=defaults.get('config_management', ConfigManagement()),  # type: ignore[arg-type]
+    )
 
 
 _OPENAI_FAKE_PRICING = {

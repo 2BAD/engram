@@ -231,11 +231,7 @@ def _poll_single_trace(
 
 
 def _unwrap_output(output: Any) -> dict[str, Any]:
-    """Unwrap nested output structure from Dynamiq responses.
-
-    Dynamiq wraps agent output in {"output": {actual_fields}}.
-    Unwrap so scoring can access fields directly.
-    """
+    """Unwrap nested ``{"output": {actual_fields}}`` from Dynamiq responses so scoring sees fields directly."""
     if not isinstance(output, dict):
         return {}
     if list(output.keys()) == ['output'] and isinstance(output['output'], dict):

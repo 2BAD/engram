@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import random
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from rich.progress import Progress
+from rich.progress import Progress, TaskID
 
 from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
@@ -122,11 +123,11 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
 
 def _run_concurrent(
     inputs: list[tuple[str, str]],
-    run_fn: object,
+    run_fn: Callable[..., RunResult],
     concurrency: int,
     repeats: int = 1,
     progress: Progress | None = None,
-    task_id: object = None,
+    task_id: TaskID | None = None,
 ) -> list[RunResult]:
     """Run inputs concurrently with N repeats per input; results are grouped by input then repeat."""
     results: dict[tuple[int, int], RunResult] = {}

@@ -43,11 +43,7 @@ def management_api(
 
 
 def fetch_deployment_timeline(jwt_env: str, app_id: str) -> list[dict[str, Any]]:
-    """Fetch all deployments for an app, sorted oldest-first.
-
-    Returns a list of dicts with workflow_version_id, version number,
-    and started_at for building time ranges.
-    """
+    """Fetch all deployments for an app, sorted oldest-first."""
     deployments = []
     page = 1
     while True:
@@ -75,11 +71,7 @@ def fetch_deployment_timeline(jwt_env: str, app_id: str) -> list[dict[str, Any]]
 
 
 def match_trace_version(trace_started_at: str, timeline: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Match a trace timestamp to a deployment version using the timeline.
-
-    Each deployment owns the window from its started_at until the next
-    deployment's started_at. The last deployment owns everything after it.
-    """
+    """Match a trace timestamp to its deployment version using the timeline."""
     if not timeline:
         return None
 
@@ -91,11 +83,7 @@ def match_trace_version(trace_started_at: str, timeline: list[dict[str, Any]]) -
 
 
 def get_trace(jwt_env: str, trace_id: str, cache_dir: Path | None = None) -> dict[str, Any]:
-    """Fetch full trace detail, serving from local cache when available.
-
-    Caches to {cache_dir}/traces/{trace_id}.json so repeated lookups
-    (cost analysis, debugging) don't hit the API again.
-    """
+    """Fetch full trace detail, serving from local cache when available."""
     if cache_dir is None:
         cache_dir = Path('data') / 'cache'
     trace_dir = cache_dir / 'traces'

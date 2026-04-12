@@ -72,6 +72,41 @@ def _save_trace_index(cache_dir: Path, app_id: str, timeline: list[dict], versio
     }, indent=2))
 
 
+def _fetch_traces(
+    trace_summaries: list[dict],
+    jwt_env: str,
+    cache_dir: Path,
+    concurrency: int,
+) -> tuple[int, int, int]:
+    """Fetch trace details concurrently. Returns (fetched, cached, errors) counts."""
+
+    def fetch_one(trace_id: str) -> bool:
+        """Returns True if fetched from API, False if already cached."""
+        trace_file = cache_dir / 'traces' / f'{trace_id}.json'
+        if trace_file.exists():
+            return False
+        get_trace(jwt_env, trace_id, cache_dir)
+        return True
+
+    cached = 0
+    fetched = 0
+    errors = 0
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = {pool.submit(fetch_one, t['id']): t['id'] for t in trace_summaries}
+        for future in as_completed(futures):
+            tid = futures[future]
+            try:
+                was_fetched = future.result()
+                if was_fetched:
+                    fetched += 1
+                else:
+                    cached += 1
+            except OSError as e:
+                errors += 1
+                console.print(f'  [red]error {tid[:12]}: {e}[/red]')
+    return fetched, cached, errors
+
+
 @traces_app.command()
 def pull(
     implementation: Annotated[str, typer.Argument(help='Implementation name')],
@@ -112,32 +147,7 @@ def pull(
         version_counts['unknown'] = unmatched
     console.print(f'  versions: {dict(version_counts)}')
 
-    # Fetch trace details concurrently
-    cached = 0
-    fetched = 0
-    errors = 0
-
-    def fetch_one(trace_id: str) -> bool:
-        """Returns True if fetched from API, False if already cached."""
-        trace_file = cache_dir / 'traces' / f'{trace_id}.json'
-        if trace_file.exists():
-            return False
-        get_trace(jwt_env, trace_id, cache_dir)
-        return True
-
-    with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = {pool.submit(fetch_one, t['id']): t['id'] for t in trace_summaries}
-        for future in as_completed(futures):
-            tid = futures[future]
-            try:
-                was_fetched = future.result()
-                if was_fetched:
-                    fetched += 1
-                else:
-                    cached += 1
-            except Exception as e:
-                errors += 1
-                console.print(f'  [red]error {tid[:12]}: {e}[/red]')
+    fetched, cached, errors = _fetch_traces(trace_summaries, jwt_env, cache_dir, concurrency)
 
     # Save version index
     _save_trace_index(cache_dir, app_id, timeline, version_index)
