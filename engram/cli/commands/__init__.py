@@ -10,6 +10,7 @@ from .init import init_command
 from .run import run_command
 from .score import score_command
 from .status import status_command
+from .suggest import suggest_command
 from .traces import traces_app
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     'run_command',
     'score_command',
     'status_command',
+    'suggest_command',
     'traces_app',
 ]

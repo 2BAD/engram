@@ -1,4 +1,4 @@
-"""Explain command: LLM-powered analysis of experiment results."""
+"""Suggest command: LLM-powered recommendations for improving experiment results."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from engram.analysis.analyzer import (
     load_cached,
     save_cached,
 )
-from engram.analysis.context import build_comparison_context, build_single_context
-from engram.analysis.prompts import EXPLAIN_SYSTEM_PROMPT, build_comparison_message, build_single_message
+from engram.analysis.context import build_single_context
+from engram.analysis.prompts import SUGGEST_SYSTEM_PROMPT, build_single_message
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.cli.prompts import ask_confirm, is_interactive
 from engram.config.discovery import find_project_root
@@ -26,15 +26,13 @@ from engram.observability.output_mode import get_output_mode
 
 console = Console()
 
+_CACHE_FILENAME = 'suggest.md'
 
-def explain_command(
-    experiment_a: Annotated[
+
+def suggest_command(
+    experiment_id: Annotated[
         str | None,
         typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
-    ] = None,
-    experiment_b: Annotated[
-        str | None,
-        typer.Argument(help='Optional second experiment for comparison analysis.'),
     ] = None,
     yes: Annotated[
         bool,
@@ -42,7 +40,7 @@ def explain_command(
     ] = False,
     no_cache: Annotated[
         bool,
-        typer.Option('--no-cache', help='Ignore cached analysis and re-run'),
+        typer.Option('--no-cache', help='Ignore cached suggestions and re-run'),
     ] = False,
     implementation: Annotated[
         str | None,
@@ -53,7 +51,7 @@ def explain_command(
         typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
     ] = None,
 ) -> None:
-    """Explain experiment results using an LLM."""
+    """Suggest improvements for experiment results using an LLM."""
     root = find_project_root()
     if root is None:
         console.print('[red]No engram.yaml found.[/red]')
@@ -70,46 +68,35 @@ def explain_command(
 
     config = project.analysis
 
-    experiment_a = (
+    experiment_id = (
         pick_experiment_id(root)
-        if experiment_a is None
-        else resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
+        if experiment_id is None
+        else resolve_experiment_arg(root, experiment_id, impl=implementation, dataset=dataset)
     )
-    if experiment_b is not None:
-        experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
 
-    is_comparison = experiment_b is not None
+    exp_dir = root / 'experiments' / experiment_id
 
-    # Check cache for single-experiment mode
-    if not no_cache and not is_comparison:
-        exp_dir = root / 'experiments' / experiment_a
-        cached = load_cached(exp_dir)
+    # Check cache
+    if not no_cache:
+        cached = load_cached(exp_dir, _CACHE_FILENAME)
         if cached is not None:
-            _display_analysis(cached, experiment_a=experiment_a)
+            _display_suggestions(cached, experiment_id)
             return
 
     # Build context and estimate cost
-    if experiment_b is not None:
-        context = build_comparison_context(root, experiment_a, experiment_b, config.max_examples)
-        user_message = build_comparison_message(context)
-    else:
-        context = build_single_context(root, experiment_a, config.max_examples)
-        user_message = build_single_message(context)
+    context = build_single_context(root, experiment_id, config.max_examples)
+    user_message = build_single_message(context)
 
-    estimated_cost, est_input, est_output = estimate_analysis_cost(config, EXPLAIN_SYSTEM_PROMPT, user_message)
+    estimated_cost, est_input, est_output = estimate_analysis_cost(config, SUGGEST_SYSTEM_PROMPT, user_message)
 
     if not _confirm_cost(config.model, estimated_cost, est_input, est_output, yes):
         raise typer.Exit(0)
 
-    # Run analysis
-    result = call_llm(config, EXPLAIN_SYSTEM_PROMPT, user_message)
+    result = call_llm(config, SUGGEST_SYSTEM_PROMPT, user_message)
 
-    # Cache single-experiment results
-    if not is_comparison:
-        exp_dir = root / 'experiments' / experiment_a
-        save_cached(exp_dir, result)
+    save_cached(exp_dir, result, _CACHE_FILENAME)
 
-    _display_analysis(result.markdown, experiment_a=experiment_a, experiment_b=experiment_b, result=result)
+    _display_suggestions(result.markdown, experiment_id, result=result)
 
 
 def _confirm_cost(
@@ -132,15 +119,14 @@ def _confirm_cost(
     return ask_confirm('Proceed with analysis?', default=True)
 
 
-def _display_analysis(
+def _display_suggestions(
     markdown_text: str,
-    experiment_a: str,
-    experiment_b: str | None = None,
+    experiment_id: str,
     result: AnalysisResult | None = None,
 ) -> None:
-    """Render the analysis output."""
+    """Render the suggestions output."""
     if not get_output_mode().use_rich:
-        payload: dict = {'analysis': markdown_text}
+        payload: dict = {'suggestions': markdown_text}
         if result is not None:
             payload['model'] = result.model
             payload['input_tokens'] = result.input_tokens
@@ -149,10 +135,7 @@ def _display_analysis(
         print(json.dumps(payload, indent=2))
         return
 
-    if experiment_b:
-        console.print(f'[bold]Analysis: {experiment_a} vs {experiment_b}[/bold]')
-    else:
-        console.print(f'[bold]Analysis: {experiment_a}[/bold]')
+    console.print(f'[bold]Suggestions: {experiment_id}[/bold]')
     console.print()
     console.print(Markdown(markdown_text))
 

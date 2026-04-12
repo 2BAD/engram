@@ -20,6 +20,7 @@ from .commands import (
     run_command,
     score_command,
     status_command,
+    suggest_command,
     traces_app,
 )
 
@@ -63,4 +64,5 @@ app.add_typer(experiments_app)
 app.command(name='init')(init_command)
 app.command(name='score')(score_command)
 app.command(name='status')(status_command)
+app.command(name='suggest')(suggest_command)
 app.add_typer(traces_app)

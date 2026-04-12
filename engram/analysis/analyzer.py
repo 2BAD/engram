@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import anthropic
 
-from engram.analysis.prompts import SYSTEM_PROMPT
 from engram.cost.pricing import find_rate, load_pricing
 
 if TYPE_CHECKING:
@@ -29,6 +28,7 @@ class AnalysisResult:
 
 def estimate_analysis_cost(
     config: AnalysisConfig,
+    system_prompt: str,
     user_message: str,
 ) -> tuple[float, int, int]:
     """
@@ -40,44 +40,45 @@ def estimate_analysis_cost(
     pricing = load_pricing()
     input_rate, output_rate = find_rate(pricing, config.model)
 
-    input_tokens = max(1, (len(SYSTEM_PROMPT) + len(user_message)) // 4)
+    input_tokens = max(1, (len(system_prompt) + len(user_message)) // 4)
     output_tokens = 1500  # ~600 words of markdown
 
     cost = input_tokens * input_rate + output_tokens * output_rate
     return cost, input_tokens, output_tokens
 
 
-def load_cached_analysis(exp_dir: Path) -> str | None:
-    """Load a cached analysis.md if it exists."""
-    path = exp_dir / 'analysis.md'
+def load_cached(exp_dir: Path, filename: str = 'analysis.md') -> str | None:
+    """Load a cached result file if it exists."""
+    path = exp_dir / filename
     if path.exists():
         return path.read_text()
     return None
 
 
-def save_analysis(exp_dir: Path, result: AnalysisResult) -> None:
-    """Cache analysis result as analysis.md in the experiment directory."""
-    (exp_dir / 'analysis.md').write_text(result.markdown)
+def save_cached(exp_dir: Path, result: AnalysisResult, filename: str = 'analysis.md') -> None:
+    """Cache an analysis result in the experiment directory."""
+    (exp_dir / filename).write_text(result.markdown)
 
 
 def call_llm(
     config: AnalysisConfig,
+    system_prompt: str,
     user_message: str,
 ) -> AnalysisResult:
     """Send the analysis request to the configured LLM."""
     model = config.model
 
     if model.startswith('claude'):
-        return _call_anthropic(model, user_message)
+        return _call_anthropic(model, system_prompt, user_message)
 
     # Future: elif model.startswith(('gpt-', 'o1', 'o3', 'o4')):
-    #     return _call_openai(model, user_message)
+    #     return _call_openai(model, system_prompt, user_message)
 
     msg = f'Unsupported analysis model: {model}. Only claude-* models are currently supported.'
     raise ValueError(msg)
 
 
-def _call_anthropic(model: str, user_message: str) -> AnalysisResult:
+def _call_anthropic(model: str, system_prompt: str, user_message: str) -> AnalysisResult:
     """Call the Anthropic Messages API."""
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
@@ -88,7 +89,7 @@ def _call_anthropic(model: str, user_message: str) -> AnalysisResult:
     response = client.messages.create(
         model=model,
         max_tokens=4096,
-        system=SYSTEM_PROMPT,
+        system=system_prompt,
         messages=[{'role': 'user', 'content': user_message}],
     )
 
