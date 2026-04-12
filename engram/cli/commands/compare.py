@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
+from engram.cli.picker import pick_experiment_pair, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.experiment_ref import format_ref_medium
 from engram.eval.results import load_results
@@ -110,17 +110,15 @@ def compare_command(
         console.print('[red]No engram.yaml found.[/red]')
         raise typer.Exit(1)
 
-    experiment_a = (
-        pick_experiment_id(root)
-        if experiment_a is None
-        else resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
-    )
-    if experiment_b is not None:
-        experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
-    if against is not None:
-        against = resolve_experiment_arg(root, against, impl=implementation, dataset=dataset)
-
-    from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
+    if experiment_a is None:
+        from_id, to_id = pick_experiment_pair(root)
+    else:
+        experiment_a = resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
+        if experiment_b is not None:
+            experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
+        if against is not None:
+            against = resolve_experiment_arg(root, against, impl=implementation, dataset=dataset)
+        from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
 
     result = compare_experiments(root, from_id, to_id)
     diff_lines = diff_config_snapshots(root, from_id, to_id, show_prompts=prompts)

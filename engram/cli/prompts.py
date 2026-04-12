@@ -57,6 +57,40 @@ def ask_experiment(root: Path, limit: int = 10) -> str:
     return questionary.select('Select experiment:', choices=choices).unsafe_ask()
 
 
+_PAIR_SIZE = 2
+
+
+def ask_experiment_pair(root: Path, limit: int = 10) -> tuple[str, str]:
+    """Checkbox select of exactly two experiments. Returns (older, newer) by timestamp."""
+    entries = list_experiments(root)
+    if not entries:
+        raise SystemExit('No experiments found. Run `engram run <impl> --dataset <name>` first.')
+    if len(entries) < _PAIR_SIZE:
+        raise SystemExit('Need at least two experiments to compare.')
+
+    entries = entries[:limit]
+    choices = []
+    for entry in entries:
+        ref = format_ref_medium(entry)
+        when = format_when(entry.get('timestamp', ''))
+        accuracy = entry.get('macro_accuracy')
+        acc_str = f'acc {accuracy:.1%}' if accuracy is not None else ''
+        label = f'{ref}  {when}  {acc_str}'.rstrip()
+        choices.append(Choice(title=label, value=entry))
+
+    selected = questionary.checkbox(
+        'Select two experiments to compare:',
+        choices=choices,
+        validate=lambda sel: len(sel) == _PAIR_SIZE or 'Select exactly 2 experiments',
+    ).unsafe_ask()
+
+    selected.sort(key=lambda e: e.get('timestamp', ''))
+    return (
+        selected[0].get('experiment_id', selected[0].get('id', '')),
+        selected[1].get('experiment_id', selected[1].get('id', '')),
+    )
+
+
 def ask_label() -> str | None:
     """Prompt for an optional experiment label. Returns None on empty input."""
     answer = questionary.text('Label (optional):').unsafe_ask()

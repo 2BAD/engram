@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from engram.cli.prompts import ask_experiment, is_interactive
+from engram.cli.prompts import ask_experiment, ask_experiment_pair, is_interactive
 from engram.display.experiment_ref import format_ref_long
 from engram.tracking.index import resolve_experiment_id
 
@@ -63,6 +63,20 @@ def pick_experiment_id(root: Path, limit: int = 10) -> str:
 
     try:
         return ask_experiment(root, limit=limit)
+    except SystemExit as e:
+        console.print(f'[red]{e}[/red]')
+        raise typer.Exit(1) from None
+
+
+def pick_experiment_pair(root: Path, limit: int = 10) -> tuple[str, str]:
+    """Prompt the user to pick two experiments with checkbox navigation; exits 1 if stdin isn't a TTY."""
+    if not is_interactive():
+        console.print('[red]No experiment IDs provided and stdin is not interactive.[/red]')
+        console.print('Hint: pass two experiment IDs explicitly, or run engram from a terminal to pick from a list.')
+        raise typer.Exit(1)
+
+    try:
+        return ask_experiment_pair(root, limit=limit)
     except SystemExit as e:
         console.print(f'[red]{e}[/red]')
         raise typer.Exit(1) from None
