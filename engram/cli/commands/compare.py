@@ -83,7 +83,7 @@ def _resolve_compare_pair(
 def compare_command(
     experiment_a: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively from recent runs.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively from recent runs.'),
     ] = None,
     experiment_b: Annotated[
         str | None,
@@ -96,11 +96,11 @@ def compare_command(
     prompts: Annotated[bool, typer.Option('--prompts', help='Show full prompt diffs')] = False,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
+        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
     ] = None,
 ) -> None:
     """Compare two experiments: accuracy deltas, cost, config diffs."""

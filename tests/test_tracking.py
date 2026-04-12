@@ -217,7 +217,7 @@ def test_resolve_short_id_not_found(tmp_path: Path):
         resolve_experiment_id(tmp_path, '99')
 
 
-# --- @ / @-N recency resolution ---
+# --- @ / @~N recency resolution ---
 
 
 def _setup_experiment_with_timestamp(
@@ -283,15 +283,15 @@ def test_resolve_at_returns_newest(tmp_path: Path):
 
 
 def test_resolve_at_dash_n_walks_back(tmp_path: Path):
-    """@-N returns the (N+1)th most recent experiment (0-indexed offset from the newest)."""
+    """@~N returns the (N+1)th most recent experiment (0-indexed offset from the newest)."""
     _setup_experiment_with_timestamp(tmp_path, 'third', 'a', 'ds', '2026-04-01T00:00:00', 1)
     _setup_experiment_with_timestamp(tmp_path, 'second', 'a', 'ds', '2026-04-02T00:00:00', 2)
     _setup_experiment_with_timestamp(tmp_path, 'first', 'a', 'ds', '2026-04-03T00:00:00', 3)
 
     assert resolve_experiment_id(tmp_path, '@') == 'first'
-    assert resolve_experiment_id(tmp_path, '@-0') == 'first'  # @ == @-0
-    assert resolve_experiment_id(tmp_path, '@-1') == 'second'
-    assert resolve_experiment_id(tmp_path, '@-2') == 'third'
+    assert resolve_experiment_id(tmp_path, '@~0') == 'first'  # @ == @-0
+    assert resolve_experiment_id(tmp_path, '@~1') == 'second'
+    assert resolve_experiment_id(tmp_path, '@~2') == 'third'
 
 
 def test_resolve_at_with_impl_filter(tmp_path: Path):
@@ -319,11 +319,11 @@ def test_resolve_at_empty_project_errors(tmp_path: Path):
 
 
 def test_resolve_at_out_of_range_errors(tmp_path: Path):
-    """@-N beyond the available experiments reports the real count in the error."""
+    """@~N beyond the available experiments reports the real count in the error."""
     _setup_experiment_with_timestamp(tmp_path, 'only', 'a', 'ds', '2026-04-01T00:00:00', 1)
 
-    with pytest.raises(FileNotFoundError, match='@-5 is out of range: only 1 experiment'):
-        resolve_experiment_id(tmp_path, '@-5')
+    with pytest.raises(FileNotFoundError, match='@~5 is out of range: only 1 experiment'):
+        resolve_experiment_id(tmp_path, '@~5')
 
 
 def test_resolve_at_empty_scope_mentions_filters(tmp_path: Path):

@@ -61,15 +61,15 @@ def _resolve(
 def set_baseline(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
+        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
     ] = None,
 ) -> None:
     """Set this experiment as the workflow baseline (the frozen anchor)."""
@@ -85,15 +85,15 @@ def set_baseline(
 def promote_reference(
     experiment_id: Annotated[
         str | None,
-        typer.Argument(help='Experiment ID, short_id, or @ / @-N. Omit to pick interactively.'),
+        typer.Argument(help='Experiment ID, short_id, or @ / @~N. Omit to pick interactively.'),
     ] = None,
     implementation: Annotated[
         str | None,
-        typer.Option('--impl', '-i', help='Scope @ / @-N resolution to this implementation'),
+        typer.Option('--impl', '-i', help='Scope @ / @~N resolution to this implementation'),
     ] = None,
     dataset: Annotated[
         str | None,
-        typer.Option('--dataset', '-d', help='Scope @ / @-N resolution to this dataset'),
+        typer.Option('--dataset', '-d', help='Scope @ / @~N resolution to this dataset'),
     ] = None,
 ) -> None:
     """Promote this experiment to be its implementation's current reference."""

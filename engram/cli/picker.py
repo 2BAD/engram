@@ -35,7 +35,7 @@ def resolve_experiment_arg(
     Wraps :func:`engram.tracking.index.resolve_experiment_id` with the CLI
     error contract: on ``FileNotFoundError``, print a red message and exit 1
     instead of letting the traceback bubble up. When the input was shortened
-    (``@``, ``@-N``, or a short id) the resolved full id is echoed in dim
+    (``@``, ``@~N``, or a short id) the resolved full id is echoed in dim
     style so lookups are never silent; a full-id pass-through stays quiet.
     """
     try:

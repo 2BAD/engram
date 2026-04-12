@@ -12,7 +12,7 @@ from engram.eval.results import load_results
 if TYPE_CHECKING:
     from engram.models.scoring import EvalReport
 
-_AT_PATTERN = re.compile(r'^@(?:-(\d+))?$')
+_AT_PATTERN = re.compile(r'^@(?:~(\d+))?$')
 
 
 def append_to_index(root: Path, report: EvalReport) -> None:
@@ -165,8 +165,8 @@ def resolve_experiment_id(
 
     Three input shapes are recognised:
 
-    - ``@`` or ``@-N`` selects by recency: ``@`` is the newest experiment,
-      ``@-1`` is one step older, and so on. The ``impl`` and ``dataset``
+    - ``@`` or ``@~N`` selects by recency: ``@`` is the newest experiment,
+      ``@~1`` is one step older, and so on. The ``impl`` and ``dataset``
       filters narrow the recency list before the Nth-back lookup.
     - A pure integer is a ``short_id`` lookup — index first, then a scan of
       every ``experiments/*/results.json`` so unscored runs stay reachable.

@@ -19,15 +19,17 @@ uv tool install git+https://github.com/2BAD/engram
 `engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations of the same workflow (`classify-anthropic` and `classify-openai`) so you can compare platforms immediately, a tiny labeled `sample` dataset.
 
 ```sh
-engram init                                                     # scaffold project + two implementations + sample dataset
-cp .env.example .env                                            # then edit .env and paste your API keys
-engram status                                                   # verify both impls load cleanly
-engram run classify-anthropic --dataset sample                  # run against Anthropic
-engram run classify-openai --dataset sample                     # run against OpenAI
-engram score <anthropic-experiment-id> --save                   # compute metrics for each
-engram score <openai-experiment-id> --save
-engram compare <anthropic-experiment-id> <openai-experiment-id> # accuracy, precision, recall, F1 and cost side by side
+engram init                                         # scaffold project + two implementations + sample dataset
+cp .env.example .env                                # then edit .env and paste your API keys
+engram status                                       # verify both impls load cleanly
+engram run classify-anthropic --dataset sample      # run against Anthropic (#1)
+engram run classify-openai --dataset sample         # run against OpenAI (#2)
+engram score 1 --save                               # compute metrics for each
+engram score 2 --save
+engram compare 1 2                                  # accuracy, precision, recall, F1 and cost side by side
 ```
+
+Each run is assigned a short numeric id (`#1`, `#2`, ...) that you can use in place of the full experiment identifier. You can also use `@` for the most recent run, `@~1` for the previous one, and scope with `--impl`/`--dataset` (e.g. `engram score @ --impl classify-anthropic`). Add `--label "prompt-v2"` to `engram run` to tag runs with a human-readable description.
 
 Rename the implementations and dataset once you replace the example with your own workflow.
 
