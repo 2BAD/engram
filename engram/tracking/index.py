@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -98,9 +99,10 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     if not replaced:
         existing.append(summary)
 
-    with index_path.open('w') as f:
+    with tempfile.NamedTemporaryFile('w', dir=index_path.parent, delete=False, suffix='.tmp') as tmp:
         for entry in existing:
-            f.write(json.dumps(entry) + '\n')
+            tmp.write(json.dumps(entry) + '\n')
+    Path(tmp.name).replace(index_path)
 
 
 def read_index(root: Path) -> list[dict[str, Any]]:
