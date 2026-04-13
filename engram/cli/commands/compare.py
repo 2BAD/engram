@@ -13,7 +13,7 @@ from rich.table import Table
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_pair, resolve_experiment_arg
 from engram.config.discovery import find_project_root
-from engram.display.experiment_ref import format_ref_medium
+from engram.display.experiment_ref import format_ref_medium, format_ref_short
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
@@ -52,6 +52,13 @@ def _print_metric_table(title: str, result: ComparisonResult, from_ref: str, to_
 
     console.print(table)
     console.print()
+
+
+def _short_header(meta: dict) -> str:
+    """``#N label`` if a label exists, otherwise just ``#N``."""
+    short = format_ref_short(meta)
+    label = meta.get('label')
+    return f'{short} [{label}]' if label else short
 
 
 def _resolve_compare_pair(
@@ -147,26 +154,25 @@ def compare_command(
         print(json.dumps(payload, indent=2))
         return
 
-    # Build pretty '#N impl/dataset' refs from each experiment's own metadata so
-    # table headers never show the long underscore-joined full id.
     from_meta, _ = load_results(root / 'experiments' / from_id)
     to_meta, _ = load_results(root / 'experiments' / to_id)
-    from_ref = escape(format_ref_medium(from_meta))
-    to_ref = escape(format_ref_medium(to_meta))
+    from_short = _short_header(from_meta)
+    to_short = _short_header(to_meta)
 
-    # Four stacked per-metric tables. Accuracy always shows real numbers; the other
-    # three render "—" for non-classification fields (where they fall back to accuracy
-    # and would be misleading to display as separate values).
-    _print_metric_table('Accuracy Comparison', result, from_ref, to_ref, metric='accuracy')
-    _print_metric_table('Precision Comparison', result, from_ref, to_ref, metric='precision')
-    _print_metric_table('Recall Comparison', result, from_ref, to_ref, metric='recall')
-    _print_metric_table('F1 Comparison', result, from_ref, to_ref, metric='f1')
+    console.print(f'  {escape(format_ref_medium(from_meta))}')
+    console.print(f'  {escape(format_ref_medium(to_meta))}')
+    console.print()
+
+    _print_metric_table('Accuracy Comparison', result, from_short, to_short, metric='accuracy')
+    _print_metric_table('Precision Comparison', result, from_short, to_short, metric='precision')
+    _print_metric_table('Recall Comparison', result, from_short, to_short, metric='recall')
+    _print_metric_table('F1 Comparison', result, from_short, to_short, metric='f1')
 
     # Cost table
     cost_table = Table(title='Cost Comparison')
     cost_table.add_column('Metric', style='bold')
-    cost_table.add_column(from_ref, justify='right')
-    cost_table.add_column(to_ref, justify='right')
+    cost_table.add_column(from_short, justify='right')
+    cost_table.add_column(to_short, justify='right')
 
     cost_table.add_row('Total', f'${result.cost_a.get("total", 0):.4f}', f'${result.cost_b.get("total", 0):.4f}')
     cost_table.add_row('Average', f'${result.cost_a.get("avg", 0):.4f}', f'${result.cost_b.get("avg", 0):.4f}')
