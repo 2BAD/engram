@@ -63,6 +63,21 @@ def _short_header(meta: dict) -> str:
     return f'{short} [{label}]' if label else short
 
 
+def _warn_cross_workflow(root: Path, from_id: str, to_id: str) -> None:
+    """Print a warning if the two experiments belong to different workflows."""
+    try:
+        wf_a, _ = lookup_experiment(root, from_id)
+        wf_b, _ = lookup_experiment(root, to_id)
+    except (FileNotFoundError, OSError, KeyError):
+        return
+    if wf_a != wf_b:
+        console.print(
+            f'[yellow]Warning: comparing across workflows ({wf_a} vs {wf_b}).'
+            ' Output schemas may differ.[/yellow]'
+        )
+        console.print()
+
+
 def _resolve_compare_pair(
     root: Path,
     experiment_a: str,
@@ -146,6 +161,8 @@ def compare_command(
         if against is not None:
             against = resolve_experiment_arg(root, against, impl=implementation, dataset=dataset)
         from_id, to_id = _resolve_compare_pair(root, experiment_a, experiment_b, against)
+
+    _warn_cross_workflow(root, from_id, to_id)
 
     result = compare_experiments(root, from_id, to_id)
     diff_lines = diff_config_snapshots(root, from_id, to_id, show_prompts=prompts)
