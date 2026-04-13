@@ -60,6 +60,10 @@ def _labels_array_to_dict(items: list[dict[str, Any]]) -> dict[str, dict[str, An
         if 'filename' not in item:
             msg = 'Each labels entry must have a "filename" field'
             raise ValueError(msg)
+        filename = item['filename']
+        if filename in result:
+            msg = f'Duplicate filename in labels.json: {filename!r}'
+            raise ValueError(msg)
         labels = {k: v for k, v in item.items() if k != 'filename'}
-        result[item['filename']] = labels
+        result[filename] = labels
     return result
