@@ -68,7 +68,7 @@ def _print_rich_status(project, workflows, implementations, datasets, baselines,
     else:
         console.print('[dim]Implementations: (none)[/dim]')
 
-    _print_list('Datasets', datasets)
+    _print_datasets(root, datasets)
 
     if errors:
         console.print()
@@ -99,16 +99,30 @@ def _print_json_status(project, workflows, implementations, datasets, baselines,
         'project': {'name': project.name, 'description': project.description},
         'workflows': [{'name': name, 'baseline': baselines.get(name, {}).get('baseline')} for name in workflows],
         'implementations': impl_entries,
-        'datasets': list(datasets),
+        'datasets': [
+            {'name': name, 'size': _count_inputs(root, name)} for name in datasets
+        ],
         'validation_errors': errors,
     }
     print(json.dumps(payload, indent=2))
 
 
-def _print_list(title: str, items: list[str]) -> None:
-    if items:
-        console.print(f'[bold]{title}:[/bold]')
-        for item in items:
-            console.print(f'  {item}')
-    else:
-        console.print(f'[dim]{title}: (none)[/dim]')
+def _print_datasets(root, datasets: list[str]) -> None:
+    if not datasets:
+        console.print('[dim]Datasets: (none)[/dim]')
+        return
+    console.print('[bold]Datasets:[/bold]')
+    for name in datasets:
+        count = _count_inputs(root, name)
+        if count is not None:
+            console.print(f'  {name} [dim]({count})[/dim]')
+        else:
+            console.print(f'  {name}')
+
+
+def _count_inputs(root, dataset_name: str) -> int | None:
+    """Count input files in a dataset, or None if the inputs dir is missing."""
+    inputs_dir = root / 'datasets' / dataset_name / 'inputs'
+    if not inputs_dir.exists():
+        return None
+    return sum(1 for f in inputs_dir.iterdir() if f.is_file())
