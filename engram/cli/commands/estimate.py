@@ -54,6 +54,8 @@ def estimate_command(
     console.print(f'  Examples: {result["total_examples"]}')
     console.print(f'  Prompt template tokens: {result["prompt_template_tokens"]}')
     console.print(f'  Avg output tokens (est): {result["avg_output_tokens"]}')
+    for warning in result.get('warnings', []):
+        console.print(f'  [yellow]{warning}[/yellow]')
     console.print()
 
     table = Table(title='Estimated Cost')

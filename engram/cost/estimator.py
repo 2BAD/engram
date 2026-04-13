@@ -45,7 +45,10 @@ def estimate_cost(
     # Estimate per-example cost
     examples = []
     total_cost = 0.0
+    has_binary = False
     for inp in inputs:
+        if inp.is_binary:
+            has_binary = True
         input_tokens = prompt_tokens + _rough_token_count(inp.text or inp.text_for_display)
         example_cost = (input_tokens * input_rate) + (avg_output_tokens * output_rate)
         total_cost += example_cost
@@ -58,6 +61,10 @@ def estimate_cost(
             }
         )
 
+    warnings: list[str] = []
+    if has_binary:
+        warnings.append('Dataset contains binary inputs (images/PDFs) whose token cost cannot be reliably estimated.')
+
     return {
         'implementation': implementation_name,
         'dataset': dataset_name,
@@ -68,6 +75,7 @@ def estimate_cost(
         'avg_output_tokens': avg_output_tokens,
         'total_examples': len(inputs),
         'total_estimated_cost_usd': round(total_cost, 4),
+        'warnings': warnings,
         'examples': examples,
     }
 
