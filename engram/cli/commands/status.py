@@ -47,11 +47,12 @@ def _print_rich_status(project, workflows, implementations, datasets, baselines,
     if workflows:
         console.print('[bold]Workflows:[/bold]')
         for name in workflows:
+            link = _link(root / 'workflows' / name, name)
             baseline = baselines.get(name, {}).get('baseline')
             if baseline:
-                console.print(f'  {name} [dim](baseline: {baseline})[/dim]')
+                console.print(f'  {link} [dim](baseline: {baseline})[/dim]')
             else:
-                console.print(f'  {name}')
+                console.print(f'  {link}')
     else:
         console.print('[dim]Workflows: (none)[/dim]')
 
@@ -62,7 +63,8 @@ def _print_rich_status(project, workflows, implementations, datasets, baselines,
                 impl = load_implementation(root, name)
                 reference = baselines.get(impl.workflow, {}).get('references', {}).get(name)
                 suffix = f' [dim](ref: {reference})[/dim]' if reference else ''
-                console.print(f'  {name} ({impl.platform}/{impl.runner}){suffix}')
+                link = _link(root / 'implementations' / name, name)
+                console.print(f'  {link} ({impl.platform}/{impl.runner}){suffix}')
             except (OSError, KeyError):
                 console.print(f'  {name} (error loading)')
     else:
@@ -99,9 +101,7 @@ def _print_json_status(project, workflows, implementations, datasets, baselines,
         'project': {'name': project.name, 'description': project.description},
         'workflows': [{'name': name, 'baseline': baselines.get(name, {}).get('baseline')} for name in workflows],
         'implementations': impl_entries,
-        'datasets': [
-            {'name': name, 'size': _count_inputs(root, name)} for name in datasets
-        ],
+        'datasets': [{'name': name, 'size': _count_inputs(root, name)} for name in datasets],
         'validation_errors': errors,
     }
     print(json.dumps(payload, indent=2))
@@ -113,11 +113,17 @@ def _print_datasets(root, datasets: list[str]) -> None:
         return
     console.print('[bold]Datasets:[/bold]')
     for name in datasets:
+        link = _link(root / 'datasets' / name, name)
         count = _count_inputs(root, name)
         if count is not None:
-            console.print(f'  {name} [dim]({count})[/dim]')
+            console.print(f'  {link} [dim]({count})[/dim]')
         else:
-            console.print(f'  {name}')
+            console.print(f'  {link}')
+
+
+def _link(path, label: str) -> str:
+    """Wrap a label in an OSC 8 hyperlink pointing to a directory."""
+    return f'[link={path.as_uri()}]{label}[/link]'
 
 
 def _count_inputs(root, dataset_name: str) -> int | None:
