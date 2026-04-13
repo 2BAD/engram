@@ -102,7 +102,7 @@ def suggest_command(
             return
 
     # Build context and estimate cost
-    if is_comparison:
+    if experiment_b is not None:
         context = build_comparison_context(root, experiment_a, experiment_b, config.max_examples)
         user_message = build_comparison_message(context)
     else:
