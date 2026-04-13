@@ -7,10 +7,9 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 
 from engram.cli.prompts import ask_confirm, ask_experiment, ask_experiment_pair, is_interactive
-from engram.display.experiment_ref import format_ref_long
+from engram.display.experiment_ref import format_ref_long, linkify_ref
 from engram.tracking.index import resolve_experiment_id
 
 console = Console()
@@ -38,12 +37,12 @@ def resolve_experiment_arg(
         raise typer.Exit(1) from None
     if resolved != arg:
         pretty = _pretty_for_echo(root, resolved)
-        console.print(f'[dim]resolved {arg} → {escape(pretty)}[/dim]')
+        console.print(f'[dim]resolved {arg} → {pretty}[/dim]')
     return resolved
 
 
 def _pretty_for_echo(root: Path, experiment_id: str) -> str:
-    """Format an experiment id as ``#N impl/dataset YYYY-MM-DD HH:MM`` for the resolver echo."""
+    """Format an experiment id as a linked ``#N impl/dataset YYYY-MM-DD HH:MM`` for the resolver echo."""
     results_path = root / 'experiments' / experiment_id / 'results.json'
     if not results_path.exists():
         return experiment_id
@@ -51,7 +50,7 @@ def _pretty_for_echo(root: Path, experiment_id: str) -> str:
         metadata = json.loads(results_path.read_text())
     except (json.JSONDecodeError, OSError):
         return experiment_id
-    return format_ref_long(metadata)
+    return linkify_ref(format_ref_long(metadata), root / 'experiments' / experiment_id)
 
 
 def pick_experiment_id(root: Path, limit: int = 10) -> str:

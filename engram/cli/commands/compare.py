@@ -7,13 +7,12 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 from rich.table import Table
 
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_pair, resolve_experiment_arg
 from engram.config.discovery import find_project_root
-from engram.display.experiment_ref import format_ref_medium, format_ref_short
+from engram.display.experiment_ref import format_ref_medium, format_ref_short, linkify_ref
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
@@ -72,8 +71,7 @@ def _warn_cross_workflow(root: Path, from_id: str, to_id: str) -> None:
         return
     if wf_a != wf_b:
         console.print(
-            f'[yellow]Warning: comparing across workflows ({wf_a} vs {wf_b}).'
-            ' Output schemas may differ.[/yellow]'
+            f'[yellow]Warning: comparing across workflows ({wf_a} vs {wf_b}). Output schemas may differ.[/yellow]'
         )
         console.print()
 
@@ -178,8 +176,8 @@ def compare_command(
     from_short = _short_header(from_meta)
     to_short = _short_header(to_meta)
 
-    console.print(f'  {escape(format_ref_medium(from_meta))}')
-    console.print(f'  {escape(format_ref_medium(to_meta))}')
+    console.print(f'  {linkify_ref(format_ref_medium(from_meta), root / "experiments" / from_id)}')
+    console.print(f'  {linkify_ref(format_ref_medium(to_meta), root / "experiments" / to_id)}')
     console.print()
 
     for delta in result.field_deltas.values():

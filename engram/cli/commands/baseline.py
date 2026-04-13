@@ -5,13 +5,12 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
 from engram.display.baseline import print_baseline_status
-from engram.display.experiment_ref import format_ref_medium
+from engram.display.experiment_ref import format_ref_medium, linkify_ref
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import (
@@ -86,10 +85,10 @@ def set_baseline(
     """Set this experiment as the workflow baseline (the frozen anchor)."""
     root, workflow, _impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_workflow_baseline(root, workflow, experiment_id)
-    metadata, _ = load_results(root / 'experiments' / experiment_id)
-    console.print(
-        f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {escape(format_ref_medium(metadata))}[/green]'
-    )
+    exp_dir = root / 'experiments' / experiment_id
+    metadata, _ = load_results(exp_dir)
+    ref = linkify_ref(format_ref_medium(metadata), exp_dir)
+    console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {ref}[/green]')
 
 
 @baseline_app.command('promote')
@@ -119,11 +118,10 @@ def promote_reference(
     """Promote this experiment to be its implementation's current reference."""
     root, workflow, impl, experiment_id = _resolve(experiment_id, implementation, dataset)
     set_impl_reference(root, workflow, impl, experiment_id)
-    metadata, _ = load_results(root / 'experiments' / experiment_id)
-    console.print(
-        f'[green]Promoted [bold]{impl}[/bold] reference for workflow '
-        f'[bold]{workflow}[/bold]: {escape(format_ref_medium(metadata))}[/green]'
-    )
+    exp_dir = root / 'experiments' / experiment_id
+    metadata, _ = load_results(exp_dir)
+    ref = linkify_ref(format_ref_medium(metadata), exp_dir)
+    console.print(f'[green]Promoted [bold]{impl}[/bold] reference for workflow [bold]{workflow}[/bold]: {ref}[/green]')
 
 
 @baseline_app.command('show')

@@ -11,7 +11,10 @@ dict (index row or results.json metadata — both carry ``short_id``,
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+
+from rich.markup import escape
 
 
 def format_ref_short(entry: dict[str, Any]) -> str:
@@ -39,6 +42,17 @@ def format_ref_long(entry: dict[str, Any]) -> str:
     when = format_when(entry.get('timestamp', ''))
     medium = format_ref_medium(entry)
     return f'{medium} {when}' if when else medium
+
+
+def linkify_ref(plain_ref: str, exp_dir: Path) -> str:
+    """
+    Wrap a plain-text ref in an OSC 8 hyperlink pointing to the experiment directory.
+
+    Returns Rich markup safe for ``console.print()``. The label text is escaped
+    so brackets in labels don't break markup.
+    """
+    uri = exp_dir.as_uri()
+    return f'[link={uri}]{escape(plain_ref)}[/link]'
 
 
 def format_when(timestamp_iso: str) -> str:

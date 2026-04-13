@@ -8,12 +8,11 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
 from engram.config.discovery import find_project_root
-from engram.display.experiment_ref import format_ref_medium
+from engram.display.experiment_ref import format_ref_medium, linkify_ref
 from engram.display.tables import print_eval_report
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
@@ -78,4 +77,5 @@ def score_command(
         append_to_index(root, report)
         if get_output_mode().use_rich:
             metadata, _ = load_results(exp_dir)
-            console.print(f'[green]Saved eval report for {escape(format_ref_medium(metadata))}[/green]')
+            ref = linkify_ref(format_ref_medium(metadata), exp_dir)
+            console.print(f'[green]Saved eval report for {ref}[/green]')
