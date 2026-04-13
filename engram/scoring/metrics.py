@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import Counter
 
@@ -196,7 +197,7 @@ def compute_cost_stats(costs: list[float]) -> tuple[float, float, float, float]:
     median = statistics.median(costs)
 
     sorted_costs = sorted(costs)
-    p95_idx = int(len(sorted_costs) * 0.95)
-    p95 = sorted_costs[min(p95_idx, len(sorted_costs) - 1)]
+    p95_idx = min(math.ceil(len(sorted_costs) * 0.95) - 1, len(sorted_costs) - 1)
+    p95 = sorted_costs[p95_idx]
 
     return total, avg, median, p95
