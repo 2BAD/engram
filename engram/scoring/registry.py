@@ -18,9 +18,10 @@ _BUILTIN_SCORERS: dict[str, Any] = {
     'contains_all': builtin_scorers.contains_all,
     'contains_any': builtin_scorers.contains_any,
     'numeric_tolerance': builtin_scorers.numeric_tolerance,
+    'json_match': builtin_scorers.json_match,
 }
 
-_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance'}
+_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance', 'json_match'}
 
 # Pattern for parameterized scorers like "numeric_tolerance(0.1)" or "fuzzy_match(0.9)"
 _PARAM_PATTERN = re.compile(r'^(\w+)\((.+)\)$')
@@ -87,8 +88,13 @@ def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any
     raise ValueError(msg)
 
 
-def _parse_arg(value: str) -> float | str:
-    """Parse a scorer argument string to a number or string."""
+def _parse_arg(value: str) -> bool | float | str:
+    """Parse a scorer argument string to a boolean, number, or string."""
+    lower = value.lower()
+    if lower == 'true':
+        return True
+    if lower == 'false':
+        return False
     try:
         return float(value)
     except ValueError:

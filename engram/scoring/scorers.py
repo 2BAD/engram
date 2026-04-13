@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Any
@@ -70,3 +71,42 @@ def numeric_tolerance(tolerance: float = 0.1) -> Callable[[Any, Any], bool]:
         return abs(p - e) / abs(e) <= tolerance
 
     return _scorer
+
+
+def json_match(ignore_extra: bool = False) -> Callable[[Any, Any], bool]:
+    """
+    Structural JSON comparison ignoring key order.
+
+    Parses string values as JSON. When *ignore_extra* is True, extra keys in
+    predicted dicts are allowed as long as all expected keys match recursively.
+    """
+
+    def _scorer(predicted: Any, expected: Any) -> bool:
+        p = _to_json_value(predicted)
+        e = _to_json_value(expected)
+        if ignore_extra:
+            return _json_contains(p, e)
+        return p == e
+
+    return _scorer
+
+
+def _to_json_value(value: Any) -> Any:
+    """Parse a JSON string into a Python value, or return as-is if already parsed."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _json_contains(haystack: Any, needle: Any) -> bool:
+    """Check that *haystack* contains all keys/values from *needle* (recursive for dicts)."""
+    if isinstance(needle, dict) and isinstance(haystack, dict):
+        return all(k in haystack and _json_contains(haystack[k], v) for k, v in needle.items())
+    if isinstance(needle, list) and isinstance(haystack, list):
+        if len(needle) != len(haystack):
+            return False
+        return all(_json_contains(h, n) for h, n in zip(haystack, needle, strict=True))
+    return haystack == needle

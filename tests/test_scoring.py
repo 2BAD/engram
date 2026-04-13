@@ -22,6 +22,7 @@ from engram.scoring.scorers import (
     contains_any,
     exact_match,
     fuzzy_match,
+    json_match,
     numeric_tolerance,
     set_match,
 )
@@ -93,6 +94,64 @@ def test_numeric_tolerance():
     assert not scorer('abc', 100)
 
 
+def test_json_match_dict_key_order():
+    scorer = json_match()
+    assert scorer({'name': 'Alice', 'age': 30}, {'age': 30, 'name': 'Alice'})
+    assert not scorer({'name': 'Alice'}, {'name': 'Bob'})
+
+
+def test_json_match_from_strings():
+    scorer = json_match()
+    assert scorer('{"a": 1, "b": 2}', '{"b": 2, "a": 1}')
+    assert not scorer('{"a": 1}', '{"a": 2}')
+
+
+def test_json_match_mixed_string_and_dict():
+    scorer = json_match()
+    assert scorer('{"x": 10}', {'x': 10})
+    assert scorer({'x': 10}, '{"x": 10}')
+
+
+def test_json_match_nested():
+    scorer = json_match()
+    assert scorer(
+        {'outer': {'b': 2, 'a': 1}, 'list': [1, 2]},
+        {'outer': {'a': 1, 'b': 2}, 'list': [1, 2]},
+    )
+    # List order matters
+    assert not scorer({'list': [2, 1]}, {'list': [1, 2]})
+
+
+def test_json_match_ignore_extra():
+    scorer = json_match(ignore_extra=True)
+    assert scorer({'name': 'Alice', 'age': 30, 'extra': 'field'}, {'name': 'Alice', 'age': 30})
+    # Missing expected key fails
+    assert not scorer({'name': 'Alice'}, {'name': 'Alice', 'age': 30})
+
+
+def test_json_match_ignore_extra_nested():
+    scorer = json_match(ignore_extra=True)
+    assert scorer(
+        {'user': {'name': 'Alice', 'id': 99}, 'meta': 'ignored'},
+        {'user': {'name': 'Alice'}},
+    )
+
+
+def test_json_match_non_json_strings():
+    scorer = json_match()
+    # Plain strings that aren't valid JSON compare as strings
+    assert scorer('hello', 'hello')
+    assert not scorer('hello', 'world')
+
+
+def test_json_match_primitives():
+    scorer = json_match()
+    assert scorer(42, 42)
+    assert scorer('true', True)
+    assert scorer('null', None)
+    assert not scorer(42, 43)
+
+
 # --- Scorer registry ---
 
 
@@ -134,6 +193,17 @@ def test_resolve_contains_any():
     scorer = resolve_scorer('contains_any')
     assert scorer('Finance report', ['finance', 'healthcare'])
     assert not scorer('Sports report', ['finance', 'healthcare'])
+
+
+def test_resolve_json_match():
+    scorer = resolve_scorer('json_match')
+    assert scorer({'a': 1}, {'a': 1})
+
+
+def test_resolve_json_match_parameterized():
+    scorer = resolve_scorer('json_match(true)')
+    assert scorer({'a': 1, 'b': 2}, {'a': 1})
+    assert not scorer({'a': 1}, {'a': 1, 'b': 2})
 
 
 def test_resolve_unknown():
