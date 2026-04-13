@@ -17,25 +17,27 @@ from engram.display.experiment_ref import format_ref_medium, format_ref_short
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
-from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
+from engram.tracking.comparison import compare_experiments, diff_config_snapshots
 
 console = Console()
 
 _NA_CELL = '[dim]—[/dim]'
 
 
-def _print_metric_table(title: str, result: ComparisonResult, from_ref: str, to_ref: str, metric: str) -> None:
-    """Render one (Field, A, B, Δ) table for a single metric across all field deltas."""
-    table = Table(title=title)
-    table.add_column('Field', style='bold')
+_METRICS = ('accuracy', 'precision', 'recall', 'f1')
+
+
+def _print_field_table(delta, from_ref: str, to_ref: str) -> None:
+    """Render one table per field with all metrics as rows."""
+    table = Table(title=delta.field_name)
+    table.add_column('Metric', style='bold')
     table.add_column(from_ref, justify='right')
     table.add_column(to_ref, justify='right')
     table.add_column('Delta', justify='right')
 
-    for delta in result.field_deltas.values():
-        # Accuracy is always meaningful; the other three require classification.
+    for metric in _METRICS:
         if metric != 'accuracy' and not delta.is_classification:
-            table.add_row(delta.field_name, _NA_CELL, _NA_CELL, _NA_CELL)
+            table.add_row(metric.capitalize(), _NA_CELL, _NA_CELL, _NA_CELL)
             continue
 
         a_val = getattr(delta, f'{metric}_a')
@@ -44,7 +46,7 @@ def _print_metric_table(title: str, result: ComparisonResult, from_ref: str, to_
         color = 'red' if delta_val < 0 else 'green'
         sign = '+' if delta_val >= 0 else ''
         table.add_row(
-            delta.field_name,
+            metric.capitalize(),
             f'{a_val:.1%}',
             f'{b_val:.1%}',
             f'[{color}]{sign}{delta_val:.1%}[/{color}]',
@@ -163,10 +165,8 @@ def compare_command(
     console.print(f'  {escape(format_ref_medium(to_meta))}')
     console.print()
 
-    _print_metric_table('Accuracy Comparison', result, from_short, to_short, metric='accuracy')
-    _print_metric_table('Precision Comparison', result, from_short, to_short, metric='precision')
-    _print_metric_table('Recall Comparison', result, from_short, to_short, metric='recall')
-    _print_metric_table('F1 Comparison', result, from_short, to_short, metric='f1')
+    for delta in result.field_deltas.values():
+        _print_field_table(delta, from_short, to_short)
 
     # Cost table
     cost_table = Table(title='Cost Comparison')

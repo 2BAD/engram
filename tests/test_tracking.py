@@ -708,8 +708,8 @@ def test_compare_experiments(tmp_path: Path):
 
 
 @pytest.mark.usefixtures('rich_mode')
-def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """engram compare renders Accuracy, Precision, Recall, and F1 tables."""
+def test_compare_command_prints_per_field_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram compare renders one table per field with all metrics as rows."""
     from typer.testing import CliRunner  # noqa: PLC0415 — only needed for this CLI-level test
 
     from engram.cli import app  # noqa: PLC0415
@@ -720,15 +720,16 @@ def test_compare_command_prints_all_four_metric_tables(tmp_path: Path, monkeypat
     result = runner.invoke(app, ['compare', id_a, id_b])
 
     assert result.exit_code == 0
-    assert 'Accuracy Comparison' in result.output
-    assert 'Precision Comparison' in result.output
-    assert 'Recall Comparison' in result.output
-    assert 'F1 Comparison' in result.output
+    # Per-field table uses the field name as title and contains all metric rows.
+    assert 'topic' in result.output
+    assert 'Accuracy' in result.output
+    assert 'Precision' in result.output
+    assert 'Recall' in result.output
+    assert 'F1' in result.output
     # Cost table still renders.
     assert 'Cost Comparison' in result.output
-    # Regressions message still triggered (accuracy 1.0 → 0.0 and F1 1.0 → 0.0).
+    # Regressions message still triggered.
     assert 'Regressions detected' in result.output
-    assert 'topic' in result.output
     # Headers show the pretty refs (#N impl/dataset), not the long full ids.
     assert '#1' in result.output
     assert '#2' in result.output
