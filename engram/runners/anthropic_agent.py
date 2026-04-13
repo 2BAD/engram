@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -102,12 +103,21 @@ class AnthropicAgentRunner(Runner):
         )
 
 
+_module_cache: dict[str, Any] = {}
+_module_cache_lock = threading.Lock()
+
+
 def _load_function(module_path: Path, func_name: str) -> Any:
-    """Dynamically import a function from a Python file."""
-    spec = importlib.util.spec_from_file_location(module_path.stem, module_path)
-    if spec is None or spec.loader is None:
-        msg = f'Cannot load module from {module_path}'
-        raise ImportError(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, func_name)
+    """Dynamically import a function from a Python file, caching the module."""
+    key = str(module_path)
+    if key not in _module_cache:
+        with _module_cache_lock:
+            if key not in _module_cache:
+                spec = importlib.util.spec_from_file_location(module_path.stem, module_path)
+                if spec is None or spec.loader is None:
+                    msg = f'Cannot load module from {module_path}'
+                    raise ImportError(msg)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                _module_cache[key] = module
+    return getattr(_module_cache[key], func_name)
