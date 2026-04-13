@@ -102,7 +102,8 @@ def suggest_command(
     if not _confirm_cost(config.model, estimated_cost, est_input, est_output, yes):
         raise typer.Exit(0)
 
-    result = call_llm(config, SUGGEST_SYSTEM_PROMPT, user_message)
+    with console.status('Analyzing...'):
+        result = call_llm(config, SUGGEST_SYSTEM_PROMPT, user_message)
 
     save_cached(exp_dir, result, _CACHE_FILENAME)
 

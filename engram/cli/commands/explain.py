@@ -114,7 +114,8 @@ def explain_command(
         raise typer.Exit(0)
 
     # Run analysis
-    result = call_llm(config, EXPLAIN_SYSTEM_PROMPT, user_message)
+    with console.status('Analyzing...'):
+        result = call_llm(config, EXPLAIN_SYSTEM_PROMPT, user_message)
 
     # Cache single-experiment results
     if not is_comparison:
