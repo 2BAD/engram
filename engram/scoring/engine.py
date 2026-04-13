@@ -28,16 +28,13 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
     if not eval_path.exists():
         return None
     import json  # noqa: PLC0415
+
     raw = json.loads(eval_path.read_text())
     return EvalReport(
         experiment_id=raw['experiment_id'],
         matched_examples=raw.get('matched_examples', 0),
-        field_metrics=[
-            FieldMetrics(**fm) for fm in raw.get('field_metrics', [])
-        ],
-        confusion_matrices=[
-            ConfusionMatrix(**cm) for cm in raw.get('confusion_matrices', [])
-        ],
+        field_metrics=[FieldMetrics(**fm) for fm in raw.get('field_metrics', [])],
+        confusion_matrices=[ConfusionMatrix(**cm) for cm in raw.get('confusion_matrices', [])],
         cost_total_usd=raw.get('cost_total_usd', 0.0),
         cost_avg_usd=raw.get('cost_avg_usd', 0.0),
         cost_median_usd=raw.get('cost_median_usd', 0.0),
