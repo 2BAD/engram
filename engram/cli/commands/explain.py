@@ -19,7 +19,7 @@ from engram.analysis.analyzer import (
 from engram.analysis.context import build_comparison_context, build_single_context
 from engram.analysis.prompts import EXPLAIN_SYSTEM_PROMPT, build_comparison_message, build_single_message
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
-from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
+from engram.cli.picker import pick_one_or_pair, resolve_experiment_arg
 from engram.cli.prompts import ask_confirm, is_interactive
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_project
@@ -82,13 +82,12 @@ def explain_command(
 
     config = project.analysis
 
-    experiment_a = (
-        pick_experiment_id(root)
-        if experiment_a is None
-        else resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
-    )
-    if experiment_b is not None:
-        experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
+    if experiment_a is None:
+        experiment_a, experiment_b = pick_one_or_pair(root)
+    else:
+        experiment_a = resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
+        if experiment_b is not None:
+            experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
 
     is_comparison = experiment_b is not None
 

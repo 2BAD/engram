@@ -16,10 +16,10 @@ from engram.analysis.analyzer import (
     load_cached,
     save_cached,
 )
-from engram.analysis.context import build_single_context
-from engram.analysis.prompts import SUGGEST_SYSTEM_PROMPT, build_single_message
+from engram.analysis.context import build_comparison_context, build_single_context
+from engram.analysis.prompts import SUGGEST_SYSTEM_PROMPT, build_comparison_message, build_single_message
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
-from engram.cli.picker import pick_experiment_id, resolve_experiment_arg
+from engram.cli.picker import pick_one_or_pair, resolve_experiment_arg
 from engram.cli.prompts import ask_confirm, is_interactive
 from engram.config.discovery import find_project_root
 from engram.config.loader import load_project
@@ -31,10 +31,16 @@ _CACHE_FILENAME = 'suggest.md'
 
 
 def suggest_command(
-    experiment_id: Annotated[
+    experiment_a: Annotated[
         str | None,
         typer.Argument(
             help='Experiment ID, #N, or @ / @~N. Omit to pick interactively.', autocompletion=complete_experiment_ids
+        ),
+    ] = None,
+    experiment_b: Annotated[
+        str | None,
+        typer.Argument(
+            help='Optional second experiment for comparison suggestions.', autocompletion=complete_experiment_ids
         ),
     ] = None,
     yes: Annotated[
@@ -78,24 +84,30 @@ def suggest_command(
 
     config = project.analysis
 
-    experiment_id = (
-        pick_experiment_id(root)
-        if experiment_id is None
-        else resolve_experiment_arg(root, experiment_id, impl=implementation, dataset=dataset)
-    )
+    if experiment_a is None:
+        experiment_a, experiment_b = pick_one_or_pair(root)
+    else:
+        experiment_a = resolve_experiment_arg(root, experiment_a, impl=implementation, dataset=dataset)
+        if experiment_b is not None:
+            experiment_b = resolve_experiment_arg(root, experiment_b, impl=implementation, dataset=dataset)
 
-    exp_dir = root / 'experiments' / experiment_id
+    is_comparison = experiment_b is not None
 
-    # Check cache
-    if not no_cache:
+    # Check cache (single-experiment only)
+    if not no_cache and not is_comparison:
+        exp_dir = root / 'experiments' / experiment_a
         cached = load_cached(exp_dir, _CACHE_FILENAME)
         if cached is not None:
-            _display_suggestions(cached, experiment_id)
+            _display_suggestions(cached, experiment_a)
             return
 
     # Build context and estimate cost
-    context = build_single_context(root, experiment_id, config.max_examples)
-    user_message = build_single_message(context)
+    if is_comparison:
+        context = build_comparison_context(root, experiment_a, experiment_b, config.max_examples)
+        user_message = build_comparison_message(context)
+    else:
+        context = build_single_context(root, experiment_a, config.max_examples)
+        user_message = build_single_message(context)
 
     estimated_cost, est_input, est_output = estimate_analysis_cost(config, SUGGEST_SYSTEM_PROMPT, user_message)
 
@@ -105,9 +117,12 @@ def suggest_command(
     with console.status('Analyzing...'):
         result = call_llm(config, SUGGEST_SYSTEM_PROMPT, user_message)
 
-    save_cached(exp_dir, result, _CACHE_FILENAME)
+    # Cache single-experiment results only
+    if not is_comparison:
+        exp_dir = root / 'experiments' / experiment_a
+        save_cached(exp_dir, result, _CACHE_FILENAME)
 
-    _display_suggestions(result.markdown, experiment_id, result=result)
+    _display_suggestions(result.markdown, experiment_a, experiment_b=experiment_b, result=result)
 
 
 def _confirm_cost(
@@ -132,7 +147,8 @@ def _confirm_cost(
 
 def _display_suggestions(
     markdown_text: str,
-    experiment_id: str,
+    experiment_a: str,
+    experiment_b: str | None = None,
     result: AnalysisResult | None = None,
 ) -> None:
     """Render the suggestions output."""
@@ -146,7 +162,10 @@ def _display_suggestions(
         print(json.dumps(payload, indent=2))
         return
 
-    console.print(f'[bold]Suggestions: {experiment_id}[/bold]')
+    if experiment_b:
+        console.print(f'[bold]Suggestions: {experiment_a} vs {experiment_b}[/bold]')
+    else:
+        console.print(f'[bold]Suggestions: {experiment_a}[/bold]')
     console.print()
     console.print(Markdown(markdown_text))
 
