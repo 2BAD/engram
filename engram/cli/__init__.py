@@ -23,6 +23,7 @@ from .commands import (
     suggest_command,
     traces_app,
 )
+from .errors import run_with_error_handling
 
 app = typer.Typer(
     name='engram',
@@ -52,6 +53,11 @@ def main(
     project_root = find_project_root()
     if project_root is not None:
         load_project_env(project_root)
+
+
+def run() -> None:
+    """CLI entry point with friendly error handling."""
+    run_with_error_handling(app)
 
 
 app.add_typer(baseline_app)

@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-engram = "engram.cli:app"
+engram = "engram.cli:run"
 
 [build-system]
 requires = ["uv_build>=0.11.3,<0.12"]
