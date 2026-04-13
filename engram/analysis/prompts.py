@@ -68,11 +68,14 @@ def build_single_message(context: dict[str, Any]) -> str:
 
     parts.append('### Metrics')
     for fm in context['field_metrics']:
-        parts.append(
-            f'- **{fm["field_name"]}**: accuracy={fm["accuracy"]:.1%}, '
-            f'precision={fm["precision"]:.1%}, recall={fm["recall"]:.1%}, '
-            f'f1={fm["f1"]:.1%} (n={fm["total"]})'
-        )
+        if fm.get('is_classification'):
+            parts.append(
+                f'- **{fm["field_name"]}**: accuracy={fm["accuracy"]:.1%}, '
+                f'precision={fm["precision"]:.1%}, recall={fm["recall"]:.1%}, '
+                f'f1={fm["f1"]:.1%} (n={fm["total"]})'
+            )
+        else:
+            parts.append(f'- **{fm["field_name"]}**: accuracy={fm["accuracy"]:.1%} (n={fm["total"]})')
     parts.append('')
 
     for cm in context.get('confusion_matrices', []):
