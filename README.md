@@ -9,10 +9,10 @@ Teams building AI-powered features need to iterate on prompts and models, measur
 Install as a user-level CLI tool (recommended):
 
 ```sh
-uv tool install git+https://github.com/2BAD/engram
+uv tool install git+https://github.com/2BAD/engram   # install; puts `engram` on $PATH
+uv tool upgrade engram                               # upgrade
+uv tool uninstall engram                             # remove
 ```
-
-`engram` is then on your `$PATH`. Upgrade with `uv tool upgrade engram`, remove with `uv tool uninstall engram`.
 
 ## Quick start
 
@@ -24,23 +24,19 @@ cp .env.example .env                                # then edit .env and paste y
 engram status                                       # verify both impls load cleanly
 engram run classify-anthropic --dataset sample      # run against Anthropic (#1)
 engram run classify-openai --dataset sample         # run against OpenAI (#2)
-engram score 1 --save                               # compute metrics for each
-engram score 2 --save
-engram compare 1 2                                  # accuracy, precision, recall, F1 and cost side by side
+engram score --save                                 # pick a run to score interactively
+engram compare                                      # pick two experiments to diff interactively
+engram explain                                      # LLM-powered analysis of why metrics look the way they do
+engram suggest                                      # concrete next steps to improve results
 ```
 
-Each run gets a short numeric id (`#1`, `#2`, ...) that you can use in place of the full experiment identifier. You can also use `@` for the most recent run, `@~1` for the previous one, and scope with `--impl`/`--dataset` (e.g. `engram score @ --impl classify-anthropic`). Add `--label "prompt-v2"` to `engram run` to tag runs with a description.
+Each run gets a short numeric id (`#1`, `#2`, ...) that you can use in place of the full experiment identifier. You can also use `@` for the most recent run, `@~1` for the previous one, or omit the ref entirely to pick interactively. Scope with `--impl`/`--dataset` (e.g. `engram score @ --impl classify-anthropic`). Add `--label "prompt-v2"` to `engram run` to tag runs with a description.
 
-Rename the implementations and dataset once you replace the example with your own workflow.
+Rename the implementations and dataset once you replace the example with your own workflow. Dataset inputs can be text files, images (JPEG, PNG, GIF, WebP), or PDFs.
 
 ## Supported runners
 
-| Runner            | Platform                    | Notes                                                                          |
-| ----------------- | --------------------------- | ------------------------------------------------------------------------------ |
-| `anthropic`       | Anthropic Messages API      | Direct API calls; JSON parsed from prompt-controlled output.                   |
-| `anthropic-agent` | Local Python agent          | Runs a user-supplied `entry_point` function; usage/cost returned by the agent. |
-| `openai`          | OpenAI Chat Completions API | JSON mode (`response_format={"type": "json_object"}`) for reliable output.     |
-| `dynamiq`         | Dynamiq hosted platform     | HTTP trigger with platform-reported cost from trace data.                      |
+`anthropic`, `openai`, `anthropic-agent` (local Python agent), `dynamiq` (hosted). Custom runners can be added by implementing the `Runner` interface.
 
 ## Development
 
