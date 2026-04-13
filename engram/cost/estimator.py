@@ -49,6 +49,7 @@ def estimate_cost(
     for inp in inputs:
         if inp.is_binary:
             has_binary = True
+            continue
         input_tokens = prompt_tokens + _rough_token_count(inp.text or inp.text_for_display)
         example_cost = (input_tokens * input_rate) + (avg_output_tokens * output_rate)
         total_cost += example_cost
