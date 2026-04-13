@@ -27,11 +27,13 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         snap = json.loads(snapshot_path.read_text())
         models = snap.get('models', [])
 
-    macro_accuracy = (
-        sum(fm.accuracy for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
-    )
+    # Only include fields that were actually scored (have labels). Unlabeled fields
+    # carry accuracy=0.0 by default and would silently deflate the averages.
+    scored = [fm for fm in report.field_metrics if fm.total > 0]
 
-    macro_f1 = sum(fm.f1 for fm in report.field_metrics) / len(report.field_metrics) if report.field_metrics else 0.0
+    macro_accuracy = sum(fm.accuracy for fm in scored) / len(scored) if scored else 0.0
+
+    macro_f1 = sum(fm.f1 for fm in scored) / len(scored) if scored else 0.0
 
     summary: dict[str, Any] = {
         'short_id': metadata['short_id'],
