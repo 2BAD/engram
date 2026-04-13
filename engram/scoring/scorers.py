@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Any
@@ -110,3 +111,29 @@ def _json_contains(haystack: Any, needle: Any) -> bool:
             return False
         return all(_json_contains(h, n) for h, n in zip(haystack, needle, strict=True))
     return haystack == needle
+
+
+_REGEX_FLAGS: dict[str, re.RegexFlag] = {
+    'i': re.IGNORECASE,
+    'm': re.MULTILINE,
+    's': re.DOTALL,
+}
+
+
+def regex(flags: str = '') -> Callable[[Any, Any], bool]:
+    """
+    Match predicted output against a regex pattern from expected.
+
+    Uses re.search so the pattern can match anywhere in the string.
+    Add ^ and $ anchors in the pattern for full-match semantics.
+    *flags* is a string of single-character flags: i (ignore case), m (multiline), s (dotall).
+    """
+    compiled_flags = re.RegexFlag(0)
+    for char in flags.lower():
+        if char in _REGEX_FLAGS:
+            compiled_flags |= _REGEX_FLAGS[char]
+
+    def _scorer(predicted: Any, expected: Any) -> bool:
+        return re.search(str(expected), str(predicted), compiled_flags) is not None
+
+    return _scorer

@@ -24,6 +24,7 @@ from engram.scoring.scorers import (
     fuzzy_match,
     json_match,
     numeric_tolerance,
+    regex,
     set_match,
 )
 
@@ -152,6 +153,47 @@ def test_json_match_primitives():
     assert not scorer(42, 43)
 
 
+def test_regex_basic():
+    scorer = regex()
+    assert scorer('order #12345 confirmed', r'\d{5}')
+    assert not scorer('no numbers here', r'\d{5}')
+
+
+def test_regex_case_insensitive():
+    scorer = regex(flags='i')
+    assert scorer('Hello World', r'hello')
+    scorer_strict = regex()
+    assert not scorer_strict('Hello World', r'hello')
+
+
+def test_regex_anchored():
+    scorer = regex()
+    assert scorer('abc123', r'^abc\d+$')
+    assert not scorer('xabc123', r'^abc\d+$')
+
+
+def test_regex_multiline():
+    scorer = regex(flags='m')
+    assert scorer('line1\nstart here', r'^start')
+
+
+def test_regex_dotall():
+    scorer = regex(flags='s')
+    assert scorer('line1\nline2', r'line1.line2')
+    scorer_no_dotall = regex()
+    assert not scorer_no_dotall('line1\nline2', r'line1.line2')
+
+
+def test_regex_combined_flags():
+    scorer = regex(flags='is')
+    assert scorer('Line1\nline2', r'LINE1.line2')
+
+
+def test_regex_coerces_to_string():
+    scorer = regex()
+    assert scorer(12345, r'^\d+$')
+
+
 # --- Scorer registry ---
 
 
@@ -204,6 +246,16 @@ def test_resolve_json_match_parameterized():
     scorer = resolve_scorer('json_match(true)')
     assert scorer({'a': 1, 'b': 2}, {'a': 1})
     assert not scorer({'a': 1}, {'a': 1, 'b': 2})
+
+
+def test_resolve_regex():
+    scorer = resolve_scorer('regex')
+    assert scorer('abc123', r'\d+')
+
+
+def test_resolve_regex_parameterized():
+    scorer = resolve_scorer('regex(i)')
+    assert scorer('HELLO', r'hello')
 
 
 def test_resolve_unknown():

@@ -19,9 +19,10 @@ _BUILTIN_SCORERS: dict[str, Any] = {
     'contains_any': builtin_scorers.contains_any,
     'numeric_tolerance': builtin_scorers.numeric_tolerance,
     'json_match': builtin_scorers.json_match,
+    'regex': builtin_scorers.regex,
 }
 
-_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance', 'json_match'}
+_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance', 'json_match', 'regex'}
 
 # Pattern for parameterized scorers like "numeric_tolerance(0.1)" or "fuzzy_match(0.9)"
 _PARAM_PATTERN = re.compile(r'^(\w+)\((.+)\)$')
