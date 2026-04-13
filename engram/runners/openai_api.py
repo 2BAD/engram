@@ -54,7 +54,7 @@ class OpenAIApiRunner(Runner):
             messages.append({'role': 'system', 'content': system_prompt})
         messages.append({'role': 'user', 'content': _build_openai_content(input_data)})
 
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI(api_key=api_key, max_retries=5)
 
         start = time.monotonic()
         try:

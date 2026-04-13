@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from engram.models.implementation import ImplementationConfig
     from engram.models.input import InputData
 
+_TOO_MANY_REQUESTS = 429
+_SERVER_ERROR = 500
+
 
 class DynamiqRunner(Runner):
     """
@@ -92,18 +95,41 @@ class DynamiqRunner(Runner):
         start = time.monotonic()
         return self._trigger_and_collect(text, start, poll_config)
 
+    def _post_with_retry(self, input_data: str, max_retries: int = 5) -> httpx.Response | RunResult:
+        """POST to the Dynamiq trigger endpoint with exponential backoff on 429/5xx."""
+        last_error: str = ''
+        for attempt in range(max_retries + 1):
+            try:
+                resp = httpx.post(
+                    f'https://{self._hostname}',
+                    headers={'Authorization': f'Bearer {self._access_key}', 'Content-Type': 'application/json'},
+                    json={'input': {'input': input_data}},
+                    timeout=180,
+                )
+            except httpx.HTTPError as e:
+                last_error = str(e)
+                if attempt < max_retries:
+                    time.sleep(2**attempt)
+                    continue
+                return RunResult(input_file='', status='failed', error=last_error)
+
+            if resp.status_code >= _SERVER_ERROR or resp.status_code == _TOO_MANY_REQUESTS:
+                last_error = f'HTTP {resp.status_code}: {resp.text[:200]}'
+                if attempt < max_retries:
+                    time.sleep(2**attempt)
+                    continue
+                return RunResult(input_file='', status='failed', error=last_error)
+
+            return resp
+
+        return RunResult(input_file='', status='failed', error=last_error)
+
     def _trigger_and_collect(self, input_data: str, start: float, poll_config: tuple[float, float]) -> RunResult:
         """Send the HTTP trigger and handle sync/async response paths."""
-        try:
-            resp = httpx.post(
-                f'https://{self._hostname}',
-                headers={'Authorization': f'Bearer {self._access_key}', 'Content-Type': 'application/json'},
-                json={'input': {'input': input_data}},
-                timeout=180,
-            )
-        except httpx.HTTPError as e:
-            latency = (time.monotonic() - start) * 1000
-            return RunResult(input_file='', status='failed', latency_ms=latency, error=str(e))
+        resp = self._post_with_retry(input_data)
+        if isinstance(resp, RunResult):
+            resp.latency_ms = (time.monotonic() - start) * 1000
+            return resp
 
         latency = (time.monotonic() - start) * 1000
 

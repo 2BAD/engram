@@ -51,7 +51,7 @@ class AnthropicApiRunner(Runner):
         system_prompt = _load_system_prompt(impl_dir)
         user_content = _build_anthropic_content(input_data)
 
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, max_retries=5)
 
         start = time.monotonic()
         try:
