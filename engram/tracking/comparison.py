@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from engram.scoring.engine import score_experiment
+from engram.scoring.engine import load_saved_report, score_experiment
+
+if TYPE_CHECKING:
+    from engram.models.scoring import EvalReport
 
 
 @dataclass
@@ -65,10 +69,18 @@ class FieldDelta:
         return self.f1_delta < 0
 
 
-def compare_experiments(root: Path, id_a: str, id_b: str) -> ComparisonResult:
+def compare_experiments(
+    root: Path,
+    id_a: str,
+    id_b: str,
+    report_a: EvalReport | None = None,
+    report_b: EvalReport | None = None,
+) -> ComparisonResult:
     """Compare two experiments by scoring both and computing deltas."""
-    report_a = score_experiment(root, id_a)
-    report_b = score_experiment(root, id_b)
+    if report_a is None:
+        report_a = load_saved_report(root, id_a) or score_experiment(root, id_a)
+    if report_b is None:
+        report_b = load_saved_report(root, id_b) or score_experiment(root, id_b)
 
     field_deltas = {}
     metrics_a = {fm.field_name: fm for fm in report_a.field_metrics}

@@ -10,23 +10,32 @@ from typing import TYPE_CHECKING, Any
 from engram.config.loader import load_implementation, load_workflow
 from engram.datasets.loader import load_dataset_labels
 from engram.eval.results import load_results
-from engram.scoring.engine import score_experiment
+from engram.scoring.engine import load_saved_report, score_experiment
 from engram.tracking.comparison import compare_experiments, diff_config_snapshots
 
 if TYPE_CHECKING:
     from engram.models.run import RunResult
+    from engram.models.scoring import EvalReport
+
+
+def _resolve_report(root: Path, experiment_id: str, report: EvalReport | None = None) -> EvalReport:
+    """Return the given report, load a saved one, or score from scratch."""
+    if report is not None:
+        return report
+    return load_saved_report(root, experiment_id) or score_experiment(root, experiment_id)
 
 
 def build_single_context(
     root: Path,
     experiment_id: str,
     max_examples: int,
+    report: EvalReport | None = None,
 ) -> dict[str, Any]:
     """Assemble all relevant data for a single-experiment explanation."""
     exp_dir = root / 'experiments' / experiment_id
     metadata, results = load_results(exp_dir)
 
-    report = score_experiment(root, experiment_id)
+    report = _resolve_report(root, experiment_id, report)
 
     snapshot = _load_snapshot(exp_dir)
 
@@ -74,11 +83,14 @@ def build_comparison_context(
     max_examples: int,
 ) -> dict[str, Any]:
     """Assemble context for a two-experiment comparison explanation."""
-    half = max(1, max_examples // 2)
-    ctx_a = build_single_context(root, id_a, max_examples=half)
-    ctx_b = build_single_context(root, id_b, max_examples=half)
+    report_a = _resolve_report(root, id_a)
+    report_b = _resolve_report(root, id_b)
 
-    comparison = compare_experiments(root, id_a, id_b)
+    half = max(1, max_examples // 2)
+    ctx_a = build_single_context(root, id_a, max_examples=half, report=report_a)
+    ctx_b = build_single_context(root, id_b, max_examples=half, report=report_b)
+
+    comparison = compare_experiments(root, id_a, id_b, report_a=report_a, report_b=report_b)
     config_diff = diff_config_snapshots(root, id_a, id_b, show_prompts=True)
 
     return {

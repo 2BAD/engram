@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from engram.config.loader import load_implementation, load_workflow
 from engram.datasets.loader import load_dataset_labels
 from engram.eval.results import load_results
-from engram.models.scoring import EvalReport, FieldMetrics
+from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
 from engram.scoring.metrics import (
     compute_accuracy_stdev,
     compute_agreement_metrics,
@@ -20,6 +20,29 @@ from engram.scoring.registry import resolve_scorer
 
 if TYPE_CHECKING:
     from engram.models.run import RunResult
+
+
+def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
+    """Load a previously saved eval report, or None if not available."""
+    eval_path = root / 'experiments' / experiment_id / 'eval.json'
+    if not eval_path.exists():
+        return None
+    import json  # noqa: PLC0415
+    raw = json.loads(eval_path.read_text())
+    return EvalReport(
+        experiment_id=raw['experiment_id'],
+        matched_examples=raw.get('matched_examples', 0),
+        field_metrics=[
+            FieldMetrics(**fm) for fm in raw.get('field_metrics', [])
+        ],
+        confusion_matrices=[
+            ConfusionMatrix(**cm) for cm in raw.get('confusion_matrices', [])
+        ],
+        cost_total_usd=raw.get('cost_total_usd', 0.0),
+        cost_avg_usd=raw.get('cost_avg_usd', 0.0),
+        cost_median_usd=raw.get('cost_median_usd', 0.0),
+        cost_p95_usd=raw.get('cost_p95_usd', 0.0),
+    )
 
 
 def score_experiment(root: Path, experiment_id: str) -> EvalReport:
