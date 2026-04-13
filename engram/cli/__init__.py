@@ -29,6 +29,7 @@ app = typer.Typer(
     name='engram',
     help='AI workflow evaluation and experimentation framework.',
     no_args_is_help=True,
+    rich_markup_mode='rich',
 )
 
 
@@ -61,14 +62,43 @@ def run() -> None:
 
 
 app.add_typer(baseline_app)
-app.command(name='compare')(compare_command)
+app.command(
+    name='compare',
+    epilog='[dim]Examples:[/dim]\n\n'
+    '  engram compare #3 #5\n\n'
+    '  engram compare #7 --prompts\n\n'
+    '  engram compare @    [dim]latest vs baseline[/dim]',
+)(compare_command)
 app.add_typer(config_app)
-app.command(name='estimate')(estimate_command)
-app.command(name='explain')(explain_command)
-app.command(name='run')(run_command)
+app.command(
+    name='estimate',
+    epilog='[dim]Examples:[/dim]\n\n  engram estimate classify-anthropic -d sample',
+)(estimate_command)
+app.command(
+    name='explain',
+    epilog='[dim]Examples:[/dim]\n\n'
+    '  engram explain #3\n\n'
+    '  engram explain #3 #5    [dim]compare two experiments[/dim]',
+)(explain_command)
+app.command(
+    name='run',
+    epilog='[dim]Examples:[/dim]\n\n'
+    '  engram run classify-anthropic -d sample\n\n'
+    '  engram run classify-anthropic -d sample -n 10 --label "prompt-v2"',
+)(run_command)
 app.add_typer(experiments_app)
 app.command(name='init')(init_command)
-app.command(name='score')(score_command)
+app.command(
+    name='score',
+    epilog='[dim]Examples:[/dim]\n\n'
+    '  engram score @          [dim]score the most recent run[/dim]\n\n'
+    '  engram score #3 --save',
+)(score_command)
 app.command(name='status')(status_command)
-app.command(name='suggest')(suggest_command)
+app.command(
+    name='suggest',
+    epilog='[dim]Examples:[/dim]\n\n'
+    '  engram suggest #3\n\n'
+    '  engram suggest #3 #5    [dim]compare two experiments[/dim]',
+)(suggest_command)
 app.add_typer(traces_app)
