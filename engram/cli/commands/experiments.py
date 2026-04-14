@@ -8,6 +8,7 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from engram.cli.completions import complete_datasets, complete_implementations
 from engram.config.discovery import find_project_root
@@ -81,16 +82,16 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
     has_labels = any(entry.get('label') for entry in entries)
 
     table = Table(title='Experiments')
-    table.add_column('#', style='bold cyan', justify='right')
-    table.add_column('When', justify='right')
-    table.add_column('Impl', overflow='fold')
-    table.add_column('Dataset', overflow='fold')
+    table.add_column(Text('#', justify='center'), style='bold cyan', justify='right')
+    table.add_column(Text('When', justify='center'), justify='right')
+    table.add_column(Text('Impl', justify='center'), overflow='fold')
+    table.add_column(Text('Dataset', justify='center'), overflow='fold')
     if has_labels:
-        table.add_column('Label', overflow='fold')
-    table.add_column('Acc', justify='right')
-    table.add_column('F1', justify='right')
-    table.add_column('Cost', justify='right')
-    table.add_column('N', justify='right')
+        table.add_column(Text('Label', justify='center'), overflow='fold')
+    table.add_column(Text('Acc', justify='center'), justify='right')
+    table.add_column(Text('F1', justify='center'), justify='right')
+    table.add_column(Text('Cost', justify='center'), justify='right')
+    table.add_column(Text('N', justify='center'), justify='right')
 
     for entry in entries:
         short_id = entry.get('short_id')

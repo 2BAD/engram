@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from engram.cli.completions import complete_datasets, complete_experiment_ids, complete_implementations
 from engram.cli.picker import pick_experiment_pair, resolve_experiment_arg
@@ -29,10 +30,10 @@ _METRICS = ('accuracy', 'precision', 'recall', 'f1')
 def _print_field_table(delta, from_ref: str, to_ref: str) -> None:
     """Render one table per field with all metrics as rows."""
     table = Table(title=delta.field_name)
-    table.add_column('Metric', style='bold')
-    table.add_column(from_ref, justify='right')
-    table.add_column(to_ref, justify='right')
-    table.add_column('Delta', justify='right')
+    table.add_column(Text('Metric', justify='center'), style='bold')
+    table.add_column(Text(from_ref, justify='center'), justify='right')
+    table.add_column(Text(to_ref, justify='center'), justify='right')
+    table.add_column(Text('Delta', justify='center'), justify='right')
 
     for metric in _METRICS:
         if metric != 'accuracy' and not delta.is_classification:
@@ -185,9 +186,9 @@ def compare_command(
 
     # Cost table
     cost_table = Table(title='Cost Comparison')
-    cost_table.add_column('Metric', style='bold')
-    cost_table.add_column(from_short, justify='right')
-    cost_table.add_column(to_short, justify='right')
+    cost_table.add_column(Text('Metric', justify='center'), style='bold')
+    cost_table.add_column(Text(from_short, justify='center'), justify='right')
+    cost_table.add_column(Text(to_short, justify='center'), justify='right')
 
     cost_table.add_row('Total', f'${result.cost_a.get("total", 0):.4f}', f'${result.cost_b.get("total", 0):.4f}')
     cost_table.add_row('Average', f'${result.cost_a.get("avg", 0):.4f}', f'${result.cost_b.get("avg", 0):.4f}')

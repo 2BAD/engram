@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from engram.cli.completions import complete_datasets, complete_implementations
 from engram.cli.prompts import ask_dataset, ask_implementation, is_interactive
@@ -59,8 +60,8 @@ def estimate_command(
     console.print()
 
     table = Table(title='Estimated Cost')
-    table.add_column('Metric', style='bold')
-    table.add_column('Value', justify='right')
+    table.add_column(Text('Metric', justify='center'), style='bold')
+    table.add_column(Text('Value', justify='center'), justify='right')
 
     table.add_row('Input rate', f'${result["input_rate_per_token"]:.8f}/token')
     table.add_row('Output rate', f'${result["output_rate_per_token"]:.8f}/token')
