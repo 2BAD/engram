@@ -56,6 +56,12 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         },
     }
 
+    # Fingerprint of the labels this experiment was scored against. Lets
+    # `engram experiments list` flag rows whose stored hash no longer matches
+    # the current labels on disk. Omitted when the report predates fingerprinting.
+    if report.labels_hash:
+        summary['labels_hash'] = report.labels_hash
+
     # Repeat-aware metrics. Persist only when at least one field carries them so single-repeat
     # entries keep the schema they had before Tier 2. The walrus filters narrow the optional types
     # for the type checker; they also serve as defensive runtime guards.

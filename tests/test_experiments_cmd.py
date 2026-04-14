@@ -286,6 +286,79 @@ def test_experiments_list_shows_short_id_column(tmp_path: Path, monkeypatch: pyt
     assert 'no-sid' not in result.output
 
 
+def _write_dataset_labels(root: Path, dataset: str, labels: dict) -> str:
+    """Write a dataset's labels.json and return its content hash."""
+    from engram.datasets.loader import compute_labels_hash  # noqa: PLC0415
+
+    ds_dir = root / 'datasets' / dataset
+    ds_dir.mkdir(parents=True, exist_ok=True)
+    (ds_dir / 'labels.json').write_text(json.dumps(labels))
+    return compute_labels_hash(labels)
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_marks_stale_rows_and_prints_footer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A row whose stored labels_hash no longer matches the dataset gets a yellow asterisk and a footer hint."""
+    stored_labels = {'001.txt': {'topic': 'A'}}
+    _write_dataset_labels(tmp_path, 'sample', stored_labels)
+    # The index row was scored against a different labels payload.
+    stale_entry = _make_entry('exp-a', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=1)
+    stale_entry['labels_hash'] = 'a' * 64  # any hash that won't match current labels
+
+    _seed_index(tmp_path, [stale_entry])
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert '*' in result.output
+    assert 'labels have changed since this score' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_does_not_mark_when_hash_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A row whose stored labels_hash matches the current dataset hash has no marker."""
+    labels = {'001.txt': {'topic': 'A'}}
+    current_hash = _write_dataset_labels(tmp_path, 'sample', labels)
+    entry = _make_entry('exp-a', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=1)
+    entry['labels_hash'] = current_hash
+
+    _seed_index(tmp_path, [entry])
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert 'labels have changed since this score' not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_experiments_list_skips_marker_without_stored_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rows with no labels_hash (older scores) don't get the stale marker even if labels exist on disk."""
+    _write_dataset_labels(tmp_path, 'sample', {'001.txt': {'topic': 'A'}})
+    entry = _make_entry('exp-a', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=1)
+
+    _seed_index(tmp_path, [entry])
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['experiments', 'list'])
+    assert result.exit_code == 0
+    assert 'labels have changed since this score' not in result.output
+
+
+def test_experiments_list_json_surfaces_labels_stale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """JSON mode tags stale rows with labels_stale=True."""
+    _write_dataset_labels(tmp_path, 'sample', {'001.txt': {'topic': 'A'}})
+    stale = _make_entry('exp-a', 'impl', 'sample', '2026-04-02T12:00:00Z', 0.9, 0.9, 0.01, short_id=1)
+    stale['labels_hash'] = 'a' * 64
+
+    _seed_index(tmp_path, [stale])
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ['--json', 'experiments', 'list'])
+    assert result.exit_code == 0
+    parsed = json.loads(result.output)
+    assert parsed[0].get('labels_stale') is True
+
+
 @pytest.mark.usefixtures('rich_mode')
 def test_experiments_list_rich_hides_full_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Rich mode never shows the long underscore-joined full id, even for long names."""

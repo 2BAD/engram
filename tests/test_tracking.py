@@ -178,6 +178,23 @@ def test_append_to_index_omits_label_when_absent(tmp_path: Path):
     assert 'label' not in read_index(tmp_path)[0]
 
 
+def test_append_to_index_carries_labels_hash(tmp_path: Path):
+    """The labels_hash from a scored report is mirrored into the index summary."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-hash', 'classify-api', 'test-ds', 'A', short_id=1)
+    report = EvalReport(experiment_id='exp-hash', field_metrics=[], labels_hash='f' * 64)
+    append_to_index(tmp_path, report)
+    assert read_index(tmp_path)[0]['labels_hash'] == 'f' * 64
+
+
+def test_append_to_index_omits_labels_hash_when_absent(tmp_path: Path):
+    """Reports with no labels_hash (older runs) don't add an empty field to the summary."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-nohash', 'classify-api', 'test-ds', 'A', short_id=1)
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-nohash', field_metrics=[]))
+    assert 'labels_hash' not in read_index(tmp_path)[0]
+
+
 # --- resolve_experiment_id ---
 
 

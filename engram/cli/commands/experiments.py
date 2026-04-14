@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -12,6 +13,7 @@ from rich.text import Text
 
 from engram.cli.completions import complete_datasets, complete_implementations
 from engram.config.discovery import find_project_root
+from engram.datasets.loader import compute_labels_hash, load_dataset_labels
 from engram.display.experiment_ref import format_when
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.index import read_index
@@ -62,10 +64,38 @@ def list_experiments(
         truncated = True
         entries = entries[:limit]
 
+    _annotate_labels_stale(root, entries)
+
     if get_output_mode().use_rich:
         _print_table(entries, total=total, truncated=truncated)
     else:
         print(json.dumps(entries, indent=2))
+
+
+def _annotate_labels_stale(root: Path, entries: list[dict[str, Any]]) -> None:
+    """Tag each entry with ``labels_stale=True`` when the current dataset hash no longer matches the stored one."""
+    hash_cache: dict[str, str | None] = {}
+    for entry in entries:
+        stored = entry.get('labels_hash')
+        if not stored:
+            continue
+        ds = entry.get('dataset', '')
+        if ds not in hash_cache:
+            hash_cache[ds] = _current_labels_hash(root, ds)
+        current = hash_cache[ds]
+        if current and current != stored:
+            entry['labels_stale'] = True
+
+
+def _current_labels_hash(root: Path, dataset: str) -> str | None:
+    """Hash the current labels.json for a dataset. None when the file is absent or unreadable."""
+    if not (root / 'datasets' / dataset / 'labels.json').exists():
+        return None
+    try:
+        labels = load_dataset_labels(root, dataset)
+    except (json.JSONDecodeError, ValueError, TypeError, OSError):
+        return None
+    return compute_labels_hash(labels)
 
 
 def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> None:
@@ -93,13 +123,19 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
     table.add_column(Text('Cost', justify='center'), justify='right')
     table.add_column(Text('N', justify='center'), justify='right')
 
+    any_stale = False
     for entry in entries:
         short_id = entry.get('short_id')
+        stale = bool(entry.get('labels_stale'))
+        any_stale = any_stale or stale
+        dataset_cell = entry.get('dataset', '')
+        if stale:
+            dataset_cell = f'[yellow]{dataset_cell} *[/yellow]'
         row = [
             str(short_id) if short_id is not None else '[dim]—[/dim]',
             format_when(entry.get('timestamp', '')),
             entry.get('implementation', ''),
-            entry.get('dataset', ''),
+            dataset_cell,
         ]
         if has_labels:
             row.append(entry.get('label', '') or '[dim]—[/dim]')
@@ -120,6 +156,12 @@ def _print_table(entries: list[dict[str, Any]], total: int, truncated: bool) -> 
         console.print(f'[dim]Showing {shown} of {total} experiments. Pass [bold]--limit 0[/bold] to show all.[/dim]')
     else:
         console.print(f'[dim]{shown} experiment(s).[/dim]')
+
+    if any_stale:
+        console.print(
+            '[dim yellow]* labels have changed since this score — '
+            're-run [bold]engram score <ref> --save[/bold] to refresh.[/dim yellow]'
+        )
 
 
 def _format_pct(value: float | None) -> str:
