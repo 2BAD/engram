@@ -16,7 +16,7 @@ from engram.display.experiment_ref import format_ref_medium, linkify_ref
 from engram.display.tables import print_eval_report
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
-from engram.scoring.engine import score_experiment
+from engram.scoring.engine import load_saved_report, score_experiment
 from engram.tracking.index import append_to_index
 
 console = Console()
@@ -72,10 +72,16 @@ def score_command(
 
     if save:
         eval_path = exp_dir / 'eval.json'
-        eval_path.write_text(json.dumps(asdict(report), indent=2))
+        prior = load_saved_report(root, experiment_id)
+        prior_hash = prior.labels_hash if prior else ''
+        use_rich = get_output_mode().use_rich
 
+        if use_rich and prior_hash and prior_hash != report.labels_hash:
+            console.print('[yellow]Labels changed since last score — updating eval.json.[/yellow]')
+
+        eval_path.write_text(json.dumps(asdict(report), indent=2))
         append_to_index(root, report)
-        if get_output_mode().use_rich:
+        if use_rich:
             metadata, _ = load_results(exp_dir)
             ref = linkify_ref(format_ref_medium(metadata), exp_dir)
             console.print(f'[green]Saved eval report for {ref}[/green]')

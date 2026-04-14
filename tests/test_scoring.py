@@ -837,3 +837,31 @@ def test_score_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     # Confusion matrices and cost stats round-trip too.
     assert len(payload['confusion_matrices']) == 1
     assert payload['cost_total_usd'] == pytest.approx(0.04)
+
+
+def _set_short_id(tmp_path: Path, experiment_id: str, short_id: int) -> None:
+    """Amend results.json to include a short_id — required by append_to_index on --save."""
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    data['short_id'] = short_id
+    results_path.write_text(json.dumps(data))
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_save_notes_drift_when_labels_changed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Editing labels between two --save passes surfaces a drift notice and rewrites eval.json."""
+    experiment_id = _setup_scored_project(tmp_path)
+    _set_short_id(tmp_path, experiment_id, 1)
+    monkeypatch.chdir(tmp_path)
+
+    CliRunner().invoke(app, ['score', experiment_id, '--save'])
+
+    labels_path = tmp_path / 'datasets' / 'test-ds' / 'labels.json'
+    labels = json.loads(labels_path.read_text())
+    labels['003.txt']['topic'] = 'C'
+    labels_path.write_text(json.dumps(labels))
+
+    second = CliRunner().invoke(app, ['score', experiment_id, '--save'])
+    assert second.exit_code == 0
+    assert 'Labels changed since last score' in second.output
+    assert 'Saved eval report' in second.output
