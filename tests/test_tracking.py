@@ -777,3 +777,74 @@ def test_compare_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert topic_delta['is_classification'] is True
     assert 'config_changes' in payload
     assert payload['regressions'] == ['topic']
+
+
+def _write_eval_json(root: Path, experiment_id: str, labels_hash: str, labels_count: int, scored_at: str) -> None:
+    """Pre-seed a saved eval report so compare_experiments reads it instead of re-scoring."""
+    (root / 'experiments' / experiment_id / 'eval.json').write_text(
+        json.dumps(
+            {
+                'experiment_id': experiment_id,
+                'matched_examples': 1,
+                'field_metrics': [],
+                'confusion_matrices': [],
+                'cost_total_usd': 0.0,
+                'cost_avg_usd': 0.0,
+                'cost_median_usd': 0.0,
+                'cost_p95_usd': 0.0,
+                'labels_hash': labels_hash,
+                'labels_count': labels_count,
+                'labels_scored_at': scored_at,
+            }
+        )
+    )
+
+
+def test_compare_experiments_populates_labels_fingerprint(tmp_path: Path):
+    """ComparisonResult carries the labels_hash/count/scored_at from each saved report."""
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    _write_eval_json(tmp_path, id_a, 'a' * 64, 50, '2026-01-01T00:00:00+00:00')
+    _write_eval_json(tmp_path, id_b, 'b' * 64, 52, '2026-03-14T00:00:00+00:00')
+
+    result = compare_experiments(tmp_path, id_a, id_b)
+    assert result.labels_a == {'hash': 'a' * 64, 'count': 50, 'scored_at': '2026-01-01T00:00:00+00:00'}
+    assert result.labels_b == {'hash': 'b' * 64, 'count': 52, 'scored_at': '2026-03-14T00:00:00+00:00'}
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_warns_on_label_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich compare output warns when two same-dataset experiments have different labels_hash."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    _write_eval_json(tmp_path, id_a, 'a' * 64, 50, '2026-01-01T00:00:00+00:00')
+    _write_eval_json(tmp_path, id_b, 'b' * 64, 52, '2026-03-14T00:00:00+00:00')
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'label set differs' in result.output
+    assert 'aaaaaaaaaaaa' in result.output  # 12-char truncated hash_a
+    assert 'bbbbbbbbbbbb' in result.output  # 12-char truncated hash_b
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_no_warning_when_labels_hash_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """No drift warning when both experiments were scored against the same labels payload."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    same_hash = 'c' * 64
+    _write_eval_json(tmp_path, id_a, same_hash, 50, '2026-01-01T00:00:00+00:00')
+    _write_eval_json(tmp_path, id_b, same_hash, 50, '2026-03-14T00:00:00+00:00')
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'label set differs' not in result.output

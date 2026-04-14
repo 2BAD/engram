@@ -17,7 +17,7 @@ from engram.display.experiment_ref import format_ref_medium, format_ref_short, l
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
-from engram.tracking.comparison import compare_experiments, diff_config_snapshots
+from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
 
 console = Console()
 
@@ -75,6 +75,28 @@ def _warn_cross_workflow(root: Path, from_id: str, to_id: str) -> None:
             f'[yellow]Warning: comparing across workflows ({wf_a} vs {wf_b}). Output schemas may differ.[/yellow]'
         )
         console.print()
+
+
+def _warn_labels_drift(result: ComparisonResult, from_meta: dict, to_meta: dict) -> None:
+    """Warn when two same-dataset experiments were scored against different label payloads."""
+    if from_meta.get('dataset') != to_meta.get('dataset'):
+        return
+    hash_a = result.labels_a.get('hash')
+    hash_b = result.labels_b.get('hash')
+    if not hash_a or not hash_b or hash_a == hash_b:
+        return
+    console.print(
+        '[yellow]Warning: label set differs between these experiments — '
+        'accuracy deltas mix model change with ground-truth change.[/yellow]'
+    )
+    console.print(
+        f'  A: hash {str(hash_a)[:12]}  count {result.labels_a.get("count")}  scored {result.labels_a.get("scored_at")}'
+    )
+    console.print(
+        f'  B: hash {str(hash_b)[:12]}  count {result.labels_b.get("count")}  scored {result.labels_b.get("scored_at")}'
+    )
+    console.print("  Re-score the older experiment to compare against today's labels.")
+    console.print()
 
 
 def _resolve_compare_pair(
@@ -180,6 +202,8 @@ def compare_command(
     console.print(f'  {linkify_ref(format_ref_medium(from_meta), root / "experiments" / from_id)}')
     console.print(f'  {linkify_ref(format_ref_medium(to_meta), root / "experiments" / to_id)}')
     console.print()
+
+    _warn_labels_drift(result, from_meta, to_meta)
 
     for delta in result.field_deltas.values():
         _print_field_table(delta, from_short, to_short)

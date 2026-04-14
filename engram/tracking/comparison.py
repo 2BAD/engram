@@ -22,6 +22,11 @@ class ComparisonResult:
     field_deltas: dict[str, FieldDelta] = field(default_factory=dict)
     cost_a: dict[str, float] = field(default_factory=dict)
     cost_b: dict[str, float] = field(default_factory=dict)
+    # Fingerprint of the labels payload each experiment was scored against.
+    # Empty dict when the report predates the fingerprint. Consumed by the CLI to
+    # detect ground-truth drift between two same-dataset experiments.
+    labels_a: dict[str, object] = field(default_factory=dict)
+    labels_b: dict[str, object] = field(default_factory=dict)
     regressions: list[str] = field(default_factory=list)
 
 
@@ -111,8 +116,21 @@ def compare_experiments(
         field_deltas=field_deltas,
         cost_a={'total': report_a.cost_total_usd, 'avg': report_a.cost_avg_usd},
         cost_b={'total': report_b.cost_total_usd, 'avg': report_b.cost_avg_usd},
+        labels_a=_labels_meta(report_a),
+        labels_b=_labels_meta(report_b),
         regressions=regressions,
     )
+
+
+def _labels_meta(report: EvalReport) -> dict[str, object]:
+    """Project the labels fingerprint fields of a report into the comparison payload."""
+    if not report.labels_hash:
+        return {}
+    return {
+        'hash': report.labels_hash,
+        'count': report.labels_count,
+        'scored_at': report.labels_scored_at,
+    }
 
 
 def diff_config_snapshots(root: Path, id_a: str, id_b: str, show_prompts: bool = False) -> list[str]:
