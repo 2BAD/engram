@@ -684,6 +684,23 @@ def test_diff_config_snapshots(tmp_path: Path):
     assert any('system.md' in line for line in lines)
 
 
+def test_diff_config_snapshots_surfaces_transform_drift(tmp_path: Path):
+    id_a, id_b = 'exp-a', 'exp-b'
+    exp_a = tmp_path / 'experiments' / id_a
+    exp_b = tmp_path / 'experiments' / id_b
+    exp_a.mkdir(parents=True)
+    exp_b.mkdir(parents=True)
+
+    (exp_a / 'config-snapshot.json').write_text(json.dumps({'transform': {'input': 'transforms.v1'}}))
+    (exp_b / 'config-snapshot.json').write_text(
+        json.dumps({'transform': {'input': 'transforms.v2', 'output': 'transforms.normalize'}})
+    )
+
+    lines = diff_config_snapshots(tmp_path, id_a, id_b)
+    assert any('transform.input' in line and 'v1' in line and 'v2' in line for line in lines)
+    assert any('transform.output' in line and 'normalize' in line for line in lines)
+
+
 # --- Comparison ---
 
 

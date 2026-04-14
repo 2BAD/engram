@@ -10,7 +10,7 @@ from engram.datasets.loader import load_dataset_inputs, load_dataset_labels
 from engram.eval.loop import run_eval as _run
 from engram.eval.results import load_results, next_short_id, save_results
 from engram.models.config_snapshot import ConfigSnapshot
-from engram.models.implementation import ImplementationConfig
+from engram.models.implementation import ImplementationConfig, Transform
 from engram.models.run import RunResult, TokenUsage
 
 # --- Dataset loader ---
@@ -355,3 +355,153 @@ def test_repeats_zero_or_negative_rejected(tmp_path: Path, monkeypatch: pytest.M
 
     with pytest.raises(ValueError, match='repeats must be >= 1'):
         _run(tmp_path, 'impl', 'small', concurrency=1, repeats=0)
+
+
+# --- Transforms ---
+
+
+TRANSFORMS_MODULE = """\
+def shape_input(inp):
+    from dataclasses import replace
+    return replace(inp, text=(inp.text or '') + '::shaped')
+
+def shape_output(output):
+    return {k.upper(): v for k, v in output.items()}
+
+def bad_transform(_inp):
+    raise RuntimeError('boom')
+"""
+
+
+def _install_transform_stubs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capture: dict,
+    transform: Transform,
+) -> None:
+    impl_dir = tmp_path / 'implementations' / 'impl'
+    impl_dir.mkdir(parents=True, exist_ok=True)
+    (impl_dir / 'transforms.py').write_text(TRANSFORMS_MODULE)
+
+    def _load_impl(*_a, **_k) -> ImplementationConfig:
+        return ImplementationConfig(workflow='wf', platform='api', runner='stub', transform=transform)
+
+    class _EchoRunner:
+        def snapshot_config(self, *_args, **_kwargs):
+            return ConfigSnapshot(implementation='impl', platform='api', runner='stub')
+
+        def trigger(self, inp, *_args, **_kwargs):
+            return RunResult(input_file='', status='succeeded', output={'echo': inp.text or ''})
+
+        def configure_pricing(self, _overrides):
+            pass
+
+    def _stub_save(exp_dir, **kwargs):
+        capture['kwargs'] = kwargs
+        (exp_dir / 'results.json').write_text('{}')
+
+    monkeypatch.setattr(loop_mod, 'load_implementation', _load_impl)
+    monkeypatch.setattr(loop_mod, 'get_runner', lambda _name: _EchoRunner())
+    monkeypatch.setattr(loop_mod, 'save_results', _stub_save)
+
+
+def test_input_transform_reshapes_before_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 2)
+    capture: dict = {}
+    _install_transform_stubs(
+        monkeypatch=monkeypatch, tmp_path=tmp_path, capture=capture, transform=Transform(input='transforms.shape_input')
+    )
+
+    _run(tmp_path, 'impl', 'small', concurrency=1)
+
+    results = capture['kwargs']['results']
+    # Runner saw shaped text, but input_file stayed as the original filename
+    assert results[0].output == {'echo': 'content-0::shaped'}
+    assert results[0].input_file == '000.txt'
+
+
+def test_output_transform_normalizes_runner_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+    _install_transform_stubs(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capture=capture,
+        transform=Transform(output='transforms.shape_output'),
+    )
+
+    _run(tmp_path, 'impl', 'small', concurrency=1)
+
+    results = capture['kwargs']['results']
+    assert results[0].output == {'ECHO': 'content-0'}
+
+
+def test_output_transform_skipped_on_failed_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+
+    impl_dir = tmp_path / 'implementations' / 'impl'
+    impl_dir.mkdir(parents=True, exist_ok=True)
+    (impl_dir / 'transforms.py').write_text(TRANSFORMS_MODULE)
+
+    class _FailingRunner:
+        def snapshot_config(self, *_args, **_kwargs):
+            return ConfigSnapshot(implementation='impl', platform='api', runner='stub')
+
+        def trigger(self, *_args, **_kwargs):
+            return RunResult(input_file='', status='failed', error='upstream fail')
+
+        def configure_pricing(self, _overrides):
+            pass
+
+    def _load_impl(*_a, **_k) -> ImplementationConfig:
+        return ImplementationConfig(
+            workflow='wf', platform='api', runner='stub', transform=Transform(output='transforms.shape_output')
+        )
+
+    def _stub_save(exp_dir, **kwargs):
+        capture['kwargs'] = kwargs
+        (exp_dir / 'results.json').write_text('{}')
+
+    monkeypatch.setattr(loop_mod, 'load_implementation', _load_impl)
+    monkeypatch.setattr(loop_mod, 'get_runner', lambda _name: _FailingRunner())
+    monkeypatch.setattr(loop_mod, 'save_results', _stub_save)
+
+    _run(tmp_path, 'impl', 'small', concurrency=1)
+
+    results = capture['kwargs']['results']
+    assert results[0].status == 'failed'
+    # output_tx must not run on failed results; otherwise we'd mask the upstream error.
+    assert results[0].output == {}
+
+
+def test_transforms_recorded_in_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+    _install_transform_stubs(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capture=capture,
+        transform=Transform(input='transforms.shape_input', output='transforms.shape_output'),
+    )
+
+    exp_id, _ = _run(tmp_path, 'impl', 'small', concurrency=1)
+    snapshot = json.loads((tmp_path / 'experiments' / exp_id / 'config-snapshot.json').read_text())
+    assert snapshot['transform'] == {'input': 'transforms.shape_input', 'output': 'transforms.shape_output'}
+
+
+def test_transform_failure_marks_result_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _make_dataset(tmp_path, 'small', 1)
+    capture: dict = {}
+    _install_transform_stubs(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capture=capture,
+        transform=Transform(input='transforms.bad_transform'),
+    )
+
+    _run(tmp_path, 'impl', 'small', concurrency=1)
+
+    results = capture['kwargs']['results']
+    assert results[0].status == 'failed'
+    assert 'boom' in results[0].error

@@ -135,6 +135,14 @@ def diff_config_snapshots(root: Path, id_a: str, id_b: str, show_prompts: bool =
         if rc_a.get(key) != rc_b.get(key):
             lines.append(f'runner_config.{key}: {rc_a.get(key)!r} -> {rc_b.get(key)!r}')
 
+    # Transform changes: diff even when only one side has one, so cross-impl
+    # comparisons honestly flag that inputs/outputs were reshaped differently.
+    tx_a = snap_a.get('transform', {})
+    tx_b = snap_b.get('transform', {})
+    for side in ('input', 'output'):
+        if tx_a.get(side) != tx_b.get(side):
+            lines.append(f'transform.{side}: {tx_a.get(side)!r} -> {tx_b.get(side)!r}')
+
     # Prompt changes
     prompts_a = snap_a.get('prompts', {})
     prompts_b = snap_b.get('prompts', {})

@@ -6,11 +6,12 @@ import yaml
 
 from engram.models.analysis import AnalysisConfig
 from engram.models.dataset import DatasetConfig
-from engram.models.implementation import ConfigManagement, ImplementationConfig
+from engram.models.implementation import ConfigManagement, ImplementationConfig, Transform
 from engram.models.project import ProjectConfig
 from engram.models.workflow import OutputField, WorkflowConfig
 from engram.runners.registry import validate_runner_name
 from engram.scoring.registry import validate_scorer_name
+from engram.transforms import validate_transform_name
 
 
 def load_project(root: Path) -> ProjectConfig:
@@ -85,12 +86,24 @@ def load_implementation(root: Path, name: str) -> ImplementationConfig:
         msg = f'implementation "{name}": {e}'
         raise ValueError(msg) from e
 
+    tx_raw = raw.get('transform', {}) or {}
+    transform = Transform(input=tx_raw.get('input'), output=tx_raw.get('output'))
+    for side, value in (('input', transform.input), ('output', transform.output)):
+        if value is None:
+            continue
+        try:
+            validate_transform_name(value)
+        except ValueError as e:
+            msg = f'implementation "{name}" transform.{side}: {e}'
+            raise ValueError(msg) from e
+
     return ImplementationConfig(
         workflow=raw['workflow'],
         platform=raw['platform'],
         runner=runner_name,
         runner_config=raw.get('runner_config', {}),
         config_management=config_management,
+        transform=transform,
     )
 
 

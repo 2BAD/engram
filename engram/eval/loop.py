@@ -17,6 +17,7 @@ from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
 from engram.eval.results import next_short_id, save_results
 from engram.models.run import RunResult
+from engram.transforms import resolve_transform
 
 if TYPE_CHECKING:
     from engram.models.input import InputData
@@ -60,6 +61,16 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     runner = get_runner(impl_config.runner)
     snapshot = runner.snapshot_config(impl_config, impl_dir)
 
+    # Record transform references on the snapshot so `compare` can surface drift
+    # when two experiments reshaped inputs or outputs differently.
+    for side in ('input', 'output'):
+        ref = getattr(impl_config.transform, side)
+        if ref:
+            snapshot.transform[side] = ref
+
+    input_tx = resolve_transform(impl_config.transform.input, impl_dir) if impl_config.transform.input else None
+    output_tx = resolve_transform(impl_config.transform.output, impl_dir) if impl_config.transform.output else None
+
     # Apply project-level pricing overrides (if engram.yaml is present) so the
     # runner's per-call cost calculation uses the same rates as `engram estimate`.
     pricing_overrides = load_project(root).pricing_overrides if (root / 'engram.yaml').exists() else {}
@@ -84,7 +95,10 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     total_triggers = len(inputs) * repeats
 
     def _run_single(inp: InputData, repeat_index: int) -> RunResult:
-        result = runner.trigger(inp, impl_config, impl_dir)
+        shaped = input_tx(inp) if input_tx else inp
+        result = runner.trigger(shaped, impl_config, impl_dir)
+        if output_tx and result.status == 'succeeded':
+            result.output = output_tx(result.output)
         result.input_file = inp.filename
         result.repeat_index = repeat_index
         return result

@@ -185,3 +185,28 @@ def test_load_workflow_accepts_custom_scorer_path(full_project):
 
     wf = load_workflow(full_project, 'classify')
     assert wf.scorers['topic'] == 'scorers.my_custom'
+
+
+def test_load_implementation_parses_transform_block(full_project):
+    impl_path = full_project / 'implementations' / 'classify-api' / 'implementation.yaml'
+    impl_path.write_text(
+        IMPL_API_YAML + 'transform:\n  input: transforms.shape_input\n  output: transforms.shape_output\n'
+    )
+
+    impl = load_implementation(full_project, 'classify-api')
+    assert impl.transform.input == 'transforms.shape_input'
+    assert impl.transform.output == 'transforms.shape_output'
+
+
+def test_load_implementation_transform_defaults_to_empty(full_project):
+    impl = load_implementation(full_project, 'classify-api')
+    assert impl.transform.input is None
+    assert impl.transform.output is None
+
+
+def test_load_implementation_rejects_bad_transform_name(full_project):
+    impl_path = full_project / 'implementations' / 'classify-api' / 'implementation.yaml'
+    impl_path.write_text(IMPL_API_YAML + 'transform:\n  input: no_dot_here\n')
+
+    with pytest.raises(ValueError, match=r'transform\.input'):
+        load_implementation(full_project, 'classify-api')

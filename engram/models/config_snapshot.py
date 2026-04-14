@@ -14,3 +14,4 @@ class ConfigSnapshot:
     models: list[str] = field(default_factory=list)
     prompts: dict[str, str] = field(default_factory=dict)
     runner_config: dict[str, Any] = field(default_factory=dict)
+    transform: dict[str, str] = field(default_factory=dict)
