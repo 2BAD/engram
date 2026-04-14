@@ -1,13 +1,14 @@
 """Tests for scoring system: scorers, registry, engine, and metrics."""
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from engram.cli import app
-from engram.scoring.engine import score_experiment
+from engram.scoring.engine import load_saved_report, score_experiment
 from engram.scoring.metrics import (
     compute_accuracy_stdev,
     compute_agreement_metrics,
@@ -627,6 +628,40 @@ def test_score_experiment(tmp_path: Path):
 
     assert len(report.confusion_matrices) == 1
     assert report.cost_total_usd == pytest.approx(0.04)
+
+    # Labels fingerprint is populated from the dataset used at score time.
+    assert len(report.labels_hash) == 64  # SHA256 hex digest
+    assert report.labels_count == 3
+    assert report.labels_scored_at
+
+
+def test_score_experiment_labels_hash_roundtrip(tmp_path: Path):
+    """Saving a report and reloading it preserves the labels fingerprint fields."""
+    experiment_id = _setup_scored_project(tmp_path)
+    report = score_experiment(tmp_path, experiment_id)
+
+    eval_path = tmp_path / 'experiments' / experiment_id / 'eval.json'
+    eval_path.write_text(json.dumps(asdict(report), indent=2))
+
+    loaded = load_saved_report(tmp_path, experiment_id)
+    assert loaded is not None
+    assert loaded.labels_hash == report.labels_hash
+    assert loaded.labels_count == report.labels_count
+    assert loaded.labels_scored_at == report.labels_scored_at
+
+
+def test_score_experiment_labels_hash_changes_with_labels(tmp_path: Path):
+    """Editing labels.json produces a different labels_hash on the next score pass."""
+    experiment_id = _setup_scored_project(tmp_path)
+    before = score_experiment(tmp_path, experiment_id).labels_hash
+
+    labels_path = tmp_path / 'datasets' / 'test-ds' / 'labels.json'
+    labels = json.loads(labels_path.read_text())
+    labels['003.txt']['topic'] = 'C'  # reclassify one entry
+    labels_path.write_text(json.dumps(labels))
+
+    after = score_experiment(tmp_path, experiment_id).labels_hash
+    assert before != after
 
 
 def test_score_experiment_non_classification_field(tmp_path: Path):

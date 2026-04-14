@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from engram.config.loader import load_implementation, load_workflow
-from engram.datasets.loader import load_dataset_labels
+from engram.datasets.loader import compute_labels_hash, load_dataset_labels
 from engram.eval.results import load_results
 from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
 from engram.scoring.metrics import (
@@ -39,6 +40,9 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         cost_avg_usd=raw.get('cost_avg_usd', 0.0),
         cost_median_usd=raw.get('cost_median_usd', 0.0),
         cost_p95_usd=raw.get('cost_p95_usd', 0.0),
+        labels_hash=raw.get('labels_hash', ''),
+        labels_count=raw.get('labels_count', 0),
+        labels_scored_at=raw.get('labels_scored_at', ''),
     )
 
 
@@ -101,6 +105,9 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
         cost_avg_usd=cost_avg,
         cost_median_usd=cost_median,
         cost_p95_usd=cost_p95,
+        labels_hash=compute_labels_hash(labels),
+        labels_count=len(labels),
+        labels_scored_at=datetime.now(UTC).isoformat(),
     )
 
 

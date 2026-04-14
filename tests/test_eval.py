@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import engram.eval.loop as loop_mod
-from engram.datasets.loader import load_dataset_inputs, load_dataset_labels
+from engram.datasets.loader import compute_labels_hash, load_dataset_inputs, load_dataset_labels
 from engram.eval.loop import run_eval as _run
 from engram.eval.results import load_results, next_short_id, save_results
 from engram.models.config_snapshot import ConfigSnapshot
@@ -73,6 +73,26 @@ def test_load_dataset_labels_missing(tmp_path: Path):
     ds_dir = tmp_path / 'datasets' / 'test-ds'
     ds_dir.mkdir(parents=True)
     assert load_dataset_labels(tmp_path, 'test-ds') == {}
+
+
+def test_compute_labels_hash_stable_across_key_order():
+    """Same labels rendered with different key orderings produce the same hash."""
+    a = {'001.txt': {'topic': 'A', 'sentiment': 'Positive'}, '002.txt': {'topic': 'B'}}
+    b = {'002.txt': {'topic': 'B'}, '001.txt': {'sentiment': 'Positive', 'topic': 'A'}}
+    assert compute_labels_hash(a) == compute_labels_hash(b)
+
+
+def test_compute_labels_hash_sensitive_to_value_changes():
+    """Changing any label value yields a different hash."""
+    a = {'001.txt': {'topic': 'A'}}
+    b = {'001.txt': {'topic': 'B'}}
+    assert compute_labels_hash(a) != compute_labels_hash(b)
+
+
+def test_compute_labels_hash_sensitive_to_new_entries():
+    a = {'001.txt': {'topic': 'A'}}
+    b = {'001.txt': {'topic': 'A'}, '002.txt': {'topic': 'B'}}
+    assert compute_labels_hash(a) != compute_labels_hash(b)
 
 
 # --- Results persistence ---

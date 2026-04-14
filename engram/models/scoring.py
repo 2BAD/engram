@@ -51,3 +51,10 @@ class EvalReport:
     cost_avg_usd: float = 0.0
     cost_median_usd: float = 0.0
     cost_p95_usd: float = 0.0
+    # Fingerprint of the labels payload used for this scoring run. Lets `compare`
+    # detect ground-truth drift between two experiments and `score` short-circuit
+    # a rewrite when labels haven't moved. Empty string for reports produced
+    # before the fingerprint was introduced.
+    labels_hash: str = ''
+    labels_count: int = 0
+    labels_scored_at: str = ''

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -67,3 +68,9 @@ def _labels_array_to_dict(items: list[dict[str, Any]]) -> dict[str, dict[str, An
         labels = {k: v for k, v in item.items() if k != 'filename'}
         result[filename] = labels
     return result
+
+
+def compute_labels_hash(labels: dict[str, dict[str, Any]]) -> str:
+    """SHA256 fingerprint of a labels dict, stable across key ordering and load format."""
+    canonical = json.dumps(labels, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
