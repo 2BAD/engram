@@ -18,6 +18,7 @@ from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
 from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
+from engram.tracking.index import decorate_with_short_ids
 
 console = Console()
 
@@ -196,6 +197,7 @@ def compare_command(
 
     from_meta, _ = load_results(root / 'experiments' / from_id)
     to_meta, _ = load_results(root / 'experiments' / to_id)
+    decorate_with_short_ids([from_meta, to_meta], root)
     from_short = _short_header(from_meta)
     to_short = _short_header(to_meta)
 

@@ -15,7 +15,7 @@ from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextC
 
 from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
-from engram.eval.results import next_short_id, save_results
+from engram.eval.results import save_results
 from engram.models.run import RunResult
 from engram.transforms import resolve_transform
 
@@ -35,7 +35,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     sample_seed: int = 0,
     repeats: int = 1,
     label: str | None = None,
-) -> tuple[str, int]:
+) -> str:
     """
     Run a workflow against a dataset, save results.
 
@@ -49,8 +49,8 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     and concurrency is not scaled to compensate. Results are stored flat with a
     `repeat_index` on each RunResult, grouped by input in the saved order.
 
-    Returns (experiment_id, short_id). The short_id is a per-project monotonic
-    integer the user can pass to other commands in place of the full experiment id.
+    Returns the full experiment id. Short ids (``#N``) are a local display-only
+    view computed from chronology by the CLI — see ``tracking.index.compute_short_ids``.
     """
     if repeats < 1:
         msg = f'repeats must be >= 1, got {repeats}'
@@ -88,7 +88,6 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
 
     timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
     experiment_id = f'{implementation_name}_{dataset_name}_{timestamp}'
-    short_id = next_short_id(root)
 
     results: list[RunResult] = []
     mode = get_output_mode()
@@ -134,7 +133,6 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
     save_results(
         exp_dir,
         experiment_id=experiment_id,
-        short_id=short_id,
         implementation=implementation_name,
         dataset=dataset_name,
         results=results,
@@ -142,7 +140,7 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
         label=label,
     )
 
-    return experiment_id, short_id
+    return experiment_id
 
 
 def _run_concurrent(

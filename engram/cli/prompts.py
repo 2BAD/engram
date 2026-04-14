@@ -10,7 +10,7 @@ from questionary import Choice
 
 from engram.config.discovery import discover_datasets, discover_implementations
 from engram.display.experiment_ref import format_ref_medium, format_when
-from engram.tracking.index import list_experiments
+from engram.tracking.index import decorate_with_short_ids, list_experiments
 
 
 def is_interactive() -> bool:
@@ -45,6 +45,7 @@ def ask_experiment(root: Path, limit: int = 10) -> str:
         raise SystemExit('No experiments found. Run `engram run <impl> --dataset <name>` first.')
 
     entries = entries[:limit]
+    decorate_with_short_ids(entries, root)
     choices = []
     for entry in entries:
         ref = format_ref_medium(entry)
@@ -69,6 +70,7 @@ def ask_experiment_pair(root: Path, limit: int = 10) -> tuple[str, str]:
         raise SystemExit('Need at least two experiments to compare.')
 
     entries = entries[:limit]
+    decorate_with_short_ids(entries, root)
     choices = []
     for entry in entries:
         ref = format_ref_medium(entry)

@@ -12,6 +12,7 @@ from engram.config.discovery import find_project_root
 from engram.config.loader import load_implementation
 from engram.eval.loop import run_eval
 from engram.runners.registry import get_runner
+from engram.tracking.index import compute_short_ids
 
 console = Console()
 
@@ -86,7 +87,7 @@ def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
             console.print(f'  [cyan]export {var}=...[/cyan]')
         raise typer.Exit(1)
 
-    _experiment_id, short_id = run_eval(
+    experiment_id = run_eval(
         root,
         implementation,
         dataset,
@@ -96,11 +97,11 @@ def run_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
         repeats=repeats,
         label=label,
     )
+    short_id = compute_short_ids(root).get(experiment_id)
+    ref = f'#{short_id}' if short_id is not None else experiment_id
     label_suffix = f' \\[{label.strip()}]' if label else ''
-    console.print(
-        f'[green]Experiment complete:[/green] #{short_id} [dim]{implementation}/{dataset}{label_suffix}[/dim]'
-    )
+    console.print(f'[green]Experiment complete:[/green] {ref} [dim]{implementation}/{dataset}{label_suffix}[/dim]')
     console.print()
     console.print('[bold]Next steps:[/bold]')
-    console.print(f'  Score the run:   [cyan]engram score #{short_id} --save[/cyan]')
+    console.print(f'  Score the run:   [cyan]engram score {ref} --save[/cyan]')
     console.print('  List past runs:  [cyan]engram experiments list[/cyan]')

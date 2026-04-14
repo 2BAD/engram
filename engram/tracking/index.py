@@ -37,7 +37,6 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     macro_f1 = sum(fm.f1 for fm in scored) / len(scored) if scored else 0.0
 
     summary: dict[str, Any] = {
-        'short_id': metadata['short_id'],
         'id': report.experiment_id,
         'implementation': metadata['implementation'],
         'dataset': metadata['dataset'],
@@ -172,10 +171,10 @@ def resolve_experiment_id(
     - ``@`` or ``@~N`` selects by recency: ``@`` is the newest experiment,
       ``@~1`` is one step older, and so on. The ``impl`` and ``dataset``
       filters narrow the recency list before the Nth-back lookup.
-    - ``#N`` (e.g. ``#7``) is a short_id lookup — index first, then a scan
-      of every ``experiments/*/results.json`` so unscored runs stay reachable.
-      Short ids are globally unique, so ``impl`` / ``dataset`` filters are
-      ignored here.
+    - ``#N`` (e.g. ``#7``) is a short_id lookup — short ids are a local
+      chronological numbering computed fresh from every experiment visible to
+      this working copy (see :func:`compute_short_ids`). Since numbering is
+      global, ``impl`` / ``dataset`` filters are ignored here.
     - Anything else is returned unchanged (full experiment id).
     """
     at_match = _AT_PATTERN.match(arg)
@@ -194,16 +193,50 @@ def resolve_experiment_id(
 
     if arg.startswith('#') and arg[1:].isdigit():
         target = int(arg[1:])
-        for entry in read_index(root):
-            if entry.get('short_id') == target:
-                return entry['id']
-        for entry in list_experiments(root):
-            if entry.get('short_id') == target:
-                return entry['experiment_id']
+        for experiment_id, sid in compute_short_ids(root).items():
+            if sid == target:
+                return experiment_id
         msg = f'No experiment found with short_id #{target}'
         raise FileNotFoundError(msg)
 
     return arg
+
+
+def compute_short_ids(root: Path) -> dict[str, int]:
+    """
+    Map each known experiment id to a display-only short id (``#N``).
+
+    Short ids are a local, chronological numbering of every experiment visible
+    from this working copy — union of on-disk experiment dirs and tracked
+    ``experiments.jsonl`` rows. Numbering is ascending by ``(timestamp,
+    experiment_id)`` so ties are deterministic. Callers that push this onto
+    entry dicts for display should use :func:`decorate_with_short_ids`.
+
+    Because the numbering is derived fresh each call, it can shift when
+    teammate-run experiments with older timestamps arrive via git; the full
+    ``{impl}_{dataset}_{timestamp}`` id is the only stable cross-machine handle.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    for entry in list_experiments(root):
+        eid = entry.get('experiment_id')
+        if eid:
+            by_id[eid] = entry
+    for entry in read_index(root):
+        eid = entry.get('id')
+        if eid and eid not in by_id:
+            by_id[eid] = entry
+    ordered = sorted(by_id.items(), key=lambda item: (item[1].get('timestamp', ''), item[0]))
+    return {eid: i + 1 for i, (eid, _) in enumerate(ordered)}
+
+
+def decorate_with_short_ids(entries: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
+    """Inject ``short_id`` onto each entry in place and return the list."""
+    sids = compute_short_ids(root)
+    for entry in entries:
+        eid = entry.get('experiment_id') or entry.get('id')
+        if eid is not None:
+            entry['short_id'] = sids.get(eid)
+    return entries
 
 
 def _format_scope(impl: str | None, dataset: str | None) -> str:

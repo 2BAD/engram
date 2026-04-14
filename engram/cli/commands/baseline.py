@@ -19,6 +19,7 @@ from engram.tracking.baseline import (
     set_impl_reference,
     set_workflow_baseline,
 )
+from engram.tracking.index import decorate_with_short_ids
 
 console = Console()
 
@@ -87,6 +88,7 @@ def set_baseline(
     set_workflow_baseline(root, workflow, experiment_id)
     exp_dir = root / 'experiments' / experiment_id
     metadata, _ = load_results(exp_dir)
+    decorate_with_short_ids([metadata], root)
     ref = linkify_ref(format_ref_medium(metadata), exp_dir)
     console.print(f'[green]Set baseline for workflow [bold]{workflow}[/bold]: {ref}[/green]')
 
@@ -120,6 +122,7 @@ def promote_reference(
     set_impl_reference(root, workflow, impl, experiment_id)
     exp_dir = root / 'experiments' / experiment_id
     metadata, _ = load_results(exp_dir)
+    decorate_with_short_ids([metadata], root)
     ref = linkify_ref(format_ref_medium(metadata), exp_dir)
     console.print(f'[green]Promoted [bold]{impl}[/bold] reference for workflow [bold]{workflow}[/bold]: {ref}[/green]')
 

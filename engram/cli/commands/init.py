@@ -25,6 +25,13 @@ experiments/*
 !experiments/baselines.json
 """
 
+# experiments.jsonl is append-only; union merge lets parallel appends from
+# different branches coexist without conflicts. Safe because short_ids are
+# computed at display time, not persisted in the index.
+_GITATTRIBUTES = """\
+experiments/experiments.jsonl merge=union
+"""
+
 _ENV_EXAMPLE = """\
 # Copy this file to `.env` and fill in your keys. Engram loads `.env` from the
 # project root on every command, so exports aren't needed once this is in place.
@@ -135,6 +142,7 @@ _LABELS_JSON = """\
 _TEMPLATES: dict[str, str] = {
     'engram.yaml': _ENGRAM_YAML,
     '.gitignore': _GITIGNORE,
+    '.gitattributes': _GITATTRIBUTES,
     '.env.example': _ENV_EXAMPLE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
     # Two implementations of the same workflow so the project is ready for a

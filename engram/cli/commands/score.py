@@ -17,7 +17,7 @@ from engram.display.tables import print_eval_report
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.scoring.engine import load_saved_report, score_experiment
-from engram.tracking.index import append_to_index
+from engram.tracking.index import append_to_index, decorate_with_short_ids
 
 console = Console()
 
@@ -83,5 +83,6 @@ def score_command(
         append_to_index(root, report)
         if use_rich:
             metadata, _ = load_results(exp_dir)
+            decorate_with_short_ids([metadata], root)
             ref = linkify_ref(format_ref_medium(metadata), exp_dir)
             console.print(f'[green]Saved eval report for {ref}[/green]')

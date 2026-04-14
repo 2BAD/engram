@@ -7,7 +7,7 @@ from engram.config.discovery import (
     discover_implementations,
     find_project_root,
 )
-from engram.tracking.index import list_experiments
+from engram.tracking.index import decorate_with_short_ids, list_experiments
 
 
 def complete_implementations(incomplete: str) -> list[tuple[str, str]]:
@@ -40,6 +40,7 @@ def complete_experiment_ids(incomplete: str) -> list[tuple[str, str]]:
     experiments = list_experiments(root)
     if not experiments:
         return []
+    decorate_with_short_ids(experiments, root)
 
     completions: list[tuple[str, str]] = []
 

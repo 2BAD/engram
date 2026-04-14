@@ -16,7 +16,7 @@ from engram.config.discovery import find_project_root
 from engram.datasets.loader import compute_labels_hash, load_dataset_labels
 from engram.display.experiment_ref import format_when
 from engram.observability.output_mode import get_output_mode
-from engram.tracking.index import read_index
+from engram.tracking.index import decorate_with_short_ids, read_index
 
 console = Console()
 
@@ -65,6 +65,7 @@ def list_experiments(
         entries = entries[:limit]
 
     _annotate_labels_stale(root, entries)
+    decorate_with_short_ids(entries, root)
 
     if get_output_mode().use_rich:
         _print_table(entries, total=total, truncated=truncated)

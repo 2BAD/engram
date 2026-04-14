@@ -10,7 +10,7 @@ from rich.console import Console
 
 from engram.cli.prompts import ask_confirm, ask_experiment, ask_experiment_pair, is_interactive
 from engram.display.experiment_ref import format_ref_long, linkify_ref
-from engram.tracking.index import resolve_experiment_id
+from engram.tracking.index import decorate_with_short_ids, resolve_experiment_id
 
 console = Console()
 
@@ -50,6 +50,7 @@ def _pretty_for_echo(root: Path, experiment_id: str) -> str:
         metadata = json.loads(results_path.read_text())
     except (json.JSONDecodeError, OSError):
         return experiment_id
+    decorate_with_short_ids([metadata], root)
     return linkify_ref(format_ref_long(metadata), root / 'experiments' / experiment_id)
 
 

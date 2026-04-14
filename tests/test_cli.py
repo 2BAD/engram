@@ -132,7 +132,11 @@ def test_run_command_prints_next_step_hint(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
     monkeypatch.setattr(
         'engram.cli.commands.run.run_eval',
-        lambda *_args, **_kwargs: ('classify-anthropic_sample_fake-id', 7),
+        lambda *_args, **_kwargs: 'classify-anthropic_sample_fake-id',
+    )
+    monkeypatch.setattr(
+        'engram.cli.commands.run.compute_short_ids',
+        lambda _root: {'classify-anthropic_sample_fake-id': 7},
     )
 
     result = runner.invoke(app, ['run', 'classify-anthropic', '--dataset', 'sample'])
@@ -156,7 +160,11 @@ def test_run_command_with_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
     monkeypatch.setattr(
         'engram.cli.commands.run.run_eval',
-        lambda *_args, **_kwargs: ('fake-id', 8),
+        lambda *_args, **_kwargs: 'fake-id',
+    )
+    monkeypatch.setattr(
+        'engram.cli.commands.run.compute_short_ids',
+        lambda _root: {'fake-id': 8},
     )
 
     result = runner.invoke(app, ['run', 'classify-anthropic', '--dataset', 'sample', '--label', 'prompt-v2'])

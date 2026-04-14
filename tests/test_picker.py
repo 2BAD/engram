@@ -139,7 +139,7 @@ def test_score_command_non_tty_exits_with_hint(tmp_path: Path, monkeypatch: pyte
     assert 'pass the experiment ID' in result.output
 
 
-def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) -> None:
+def _setup_minimal_scored_project(root: Path, exp_id: str) -> None:
     """Write a project with one workflow, one impl, one dataset, and one runnable experiment."""
     (root / 'engram.yaml').write_text('name: test\n')
     wf = root / 'workflows' / 'classify'
@@ -168,7 +168,6 @@ def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) ->
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': short_id,
                 'implementation': 'classify-api',
                 'dataset': 'sample',
                 'timestamp': '2026-04-10T00:00:00',
@@ -193,7 +192,6 @@ def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) ->
     (root / 'experiments' / 'experiments.jsonl').write_text(
         json.dumps(
             {
-                'short_id': short_id,
                 'id': exp_id,
                 'implementation': 'classify-api',
                 'dataset': 'sample',
@@ -210,7 +208,7 @@ def _setup_minimal_scored_project(root: Path, exp_id: str, short_id: int = 1) ->
 
 def test_score_command_accepts_short_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """`engram score #1` resolves the short_id through the index and scores the matching experiment."""
-    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    _setup_minimal_scored_project(tmp_path, 'exp-a')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['score', '#1'])
@@ -220,7 +218,7 @@ def test_score_command_accepts_short_id(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_score_command_rejects_unknown_short_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """An unknown short_id exits with a clear 'No experiment found' message."""
-    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    _setup_minimal_scored_project(tmp_path, 'exp-a')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['score', '#99'])
@@ -231,7 +229,7 @@ def test_score_command_rejects_unknown_short_id(tmp_path: Path, monkeypatch: pyt
 @pytest.mark.usefixtures('rich_mode')
 def test_score_command_accepts_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """`engram score @` resolves to the most recent experiment and scores it."""
-    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    _setup_minimal_scored_project(tmp_path, 'exp-a')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['score', '@'])
@@ -258,7 +256,7 @@ def test_score_command_at_on_empty_project(tmp_path: Path, monkeypatch: pytest.M
 @pytest.mark.usefixtures('rich_mode')
 def test_score_command_full_id_does_not_echo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Passing a full experiment id is a pass-through — no 'resolved' echo."""
-    _setup_minimal_scored_project(tmp_path, 'exp-a', short_id=1)
+    _setup_minimal_scored_project(tmp_path, 'exp-a')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ['score', 'exp-a'])

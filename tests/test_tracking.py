@@ -7,7 +7,14 @@ import pytest
 
 from engram.models.scoring import EvalReport, FieldMetrics
 from engram.tracking.comparison import FieldDelta, compare_experiments, diff_config_snapshots
-from engram.tracking.index import append_to_index, list_experiments, read_index, resolve_experiment_id
+from engram.tracking.index import (
+    append_to_index,
+    compute_short_ids,
+    decorate_with_short_ids,
+    list_experiments,
+    read_index,
+    resolve_experiment_id,
+)
 
 
 def _setup_experiment(
@@ -16,7 +23,7 @@ def _setup_experiment(
     impl: str,
     dataset: str,
     topic_output: str,
-    short_id: int = 1,
+    timestamp: str = '2026-04-04T12:00:00Z',
 ) -> None:
     """Create a minimal experiment with results and config snapshot."""
     exp_dir = root / 'experiments' / experiment_id
@@ -24,10 +31,9 @@ def _setup_experiment(
 
     results_data = {
         'experiment_id': experiment_id,
-        'short_id': short_id,
         'implementation': impl,
         'dataset': dataset,
-        'timestamp': '2026-04-04T12:00:00Z',
+        'timestamp': timestamp,
         'total': 1,
         'succeeded': 1,
         'failed': 0,
@@ -80,8 +86,8 @@ def _setup_project_with_experiments(tmp_path: Path) -> tuple[str, str]:
     id_a = 'classify-api_test-ds_20260404_120000'
     id_b = 'classify-api_test-ds_20260404_130000'
 
-    _setup_experiment(tmp_path, id_a, 'classify-api', 'test-ds', 'A', short_id=1)
-    _setup_experiment(tmp_path, id_b, 'classify-api', 'test-ds', 'B', short_id=2)
+    _setup_experiment(tmp_path, id_a, 'classify-api', 'test-ds', 'A', timestamp='2026-04-04T12:00:00Z')
+    _setup_experiment(tmp_path, id_b, 'classify-api', 'test-ds', 'B', timestamp='2026-04-04T13:00:00Z')
 
     return id_a, id_b
 
@@ -100,7 +106,6 @@ def test_append_and_read_index(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': 1,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -136,6 +141,7 @@ def test_append_and_read_index(tmp_path: Path):
     assert len(entries) == 1
     entry = entries[0]
     assert entry['id'] == exp_id
+    assert 'short_id' not in entry  # computed as a display-only view, never persisted
     assert entry['macro_accuracy'] == 0.95
     assert entry['macro_f1'] == 0.91
     assert entry['field_accuracy'] == {'topic': 0.95}
@@ -149,18 +155,10 @@ def test_read_index_empty(tmp_path: Path):
     assert read_index(tmp_path) == []
 
 
-def test_append_to_index_records_short_id(tmp_path: Path):
-    """append_to_index copies short_id from results.json metadata into the index row."""
-    (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=42)
-    append_to_index(tmp_path, EvalReport(experiment_id='exp-a', field_metrics=[]))
-    assert read_index(tmp_path)[0]['short_id'] == 42
-
-
 def test_append_to_index_carries_label(tmp_path: Path):
     """A label in results.json metadata is copied to the index row."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-labeled', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-labeled', 'classify-api', 'test-ds', 'A')
     results_path = tmp_path / 'experiments' / 'exp-labeled' / 'results.json'
     data = json.loads(results_path.read_text())
     data['label'] = 'prompt-v2'
@@ -173,7 +171,7 @@ def test_append_to_index_carries_label(tmp_path: Path):
 def test_append_to_index_omits_label_when_absent(tmp_path: Path):
     """Index rows don't get an empty or null label field when metadata has none."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-nolabel', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-nolabel', 'classify-api', 'test-ds', 'A')
     append_to_index(tmp_path, EvalReport(experiment_id='exp-nolabel', field_metrics=[]))
     assert 'label' not in read_index(tmp_path)[0]
 
@@ -181,7 +179,7 @@ def test_append_to_index_omits_label_when_absent(tmp_path: Path):
 def test_append_to_index_carries_labels_hash(tmp_path: Path):
     """The labels_hash from a scored report is mirrored into the index summary."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-hash', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-hash', 'classify-api', 'test-ds', 'A')
     report = EvalReport(experiment_id='exp-hash', field_metrics=[], labels_hash='f' * 64)
     append_to_index(tmp_path, report)
     assert read_index(tmp_path)[0]['labels_hash'] == 'f' * 64
@@ -190,7 +188,7 @@ def test_append_to_index_carries_labels_hash(tmp_path: Path):
 def test_append_to_index_omits_labels_hash_when_absent(tmp_path: Path):
     """Reports with no labels_hash (older runs) don't add an empty field to the summary."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-nohash', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-nohash', 'classify-api', 'test-ds', 'A')
     append_to_index(tmp_path, EvalReport(experiment_id='exp-nohash', field_metrics=[]))
     assert 'labels_hash' not in read_index(tmp_path)[0]
 
@@ -207,31 +205,97 @@ def test_resolve_non_numeric_returns_input_unchanged(tmp_path: Path):
 
 
 def test_resolve_short_id_against_index(tmp_path: Path):
-    """Numeric input hits the index first and returns the matching full id."""
+    """#N maps to the Nth experiment by chronological order."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
-    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B', short_id=2)
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', timestamp='2026-04-04T12:00:00Z')
+    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B', timestamp='2026-04-04T13:00:00Z')
     append_to_index(tmp_path, EvalReport(experiment_id='exp-a', field_metrics=[]))
     append_to_index(tmp_path, EvalReport(experiment_id='exp-b', field_metrics=[]))
 
+    assert resolve_experiment_id(tmp_path, '#1') == 'exp-a'
     assert resolve_experiment_id(tmp_path, '#2') == 'exp-b'
 
 
-def test_resolve_short_id_falls_back_to_experiments_dir(tmp_path: Path):
-    """Unscored runs not in the index are still reachable by short_id via the dir scan."""
+def test_resolve_short_id_covers_unscored_runs(tmp_path: Path):
+    """Short id numbering unions dir-only (unscored) runs with indexed ones."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-unscored', 'classify-api', 'test-ds', 'A', short_id=7)
+    _setup_experiment(tmp_path, 'exp-unscored', 'classify-api', 'test-ds', 'A')
     # Note: no append_to_index — this experiment has never been scored.
-    assert resolve_experiment_id(tmp_path, '#7') == 'exp-unscored'
+    assert resolve_experiment_id(tmp_path, '#1') == 'exp-unscored'
+
+
+def test_resolve_short_id_covers_index_only_runs(tmp_path: Path):
+    """Runs visible only through the tracked index (teammate's scored runs, dir absent) are still reachable by #N."""
+    (tmp_path / 'experiments').mkdir()
+    # Write directly to experiments.jsonl without creating a local results dir.
+    (tmp_path / 'experiments' / 'experiments.jsonl').write_text(
+        json.dumps(
+            {
+                'id': 'remote-exp',
+                'implementation': 'classify-api',
+                'dataset': 'test-ds',
+                'timestamp': '2026-04-04T12:00:00Z',
+            }
+        )
+        + '\n'
+    )
+    assert resolve_experiment_id(tmp_path, '#1') == 'remote-exp'
 
 
 def test_resolve_short_id_not_found(tmp_path: Path):
     """Looking up a short_id that doesn't exist raises FileNotFoundError with a clear message."""
     (tmp_path / 'experiments').mkdir()
-    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A')
 
     with pytest.raises(FileNotFoundError, match='No experiment found with short_id #99'):
         resolve_experiment_id(tmp_path, '#99')
+
+
+# --- compute_short_ids / decorate_with_short_ids ---
+
+
+def test_compute_short_ids_empty_project(tmp_path: Path):
+    """A project with no experiments returns an empty map."""
+    assert compute_short_ids(tmp_path) == {}
+
+
+def test_compute_short_ids_numbers_chronologically(tmp_path: Path):
+    """Short ids are assigned ascending by timestamp, oldest first."""
+    _setup_experiment(tmp_path, 'b', 'impl', 'ds', 'A', timestamp='2026-04-02T00:00:00Z')
+    _setup_experiment(tmp_path, 'a', 'impl', 'ds', 'A', timestamp='2026-04-01T00:00:00Z')
+    _setup_experiment(tmp_path, 'c', 'impl', 'ds', 'A', timestamp='2026-04-03T00:00:00Z')
+
+    assert compute_short_ids(tmp_path) == {'a': 1, 'b': 2, 'c': 3}
+
+
+def test_compute_short_ids_breaks_ties_by_id(tmp_path: Path):
+    """Experiments sharing a timestamp are ordered by id string so numbering is deterministic."""
+    _setup_experiment(tmp_path, 'b-exp', 'impl', 'ds', 'A', timestamp='2026-04-01T00:00:00Z')
+    _setup_experiment(tmp_path, 'a-exp', 'impl', 'ds', 'A', timestamp='2026-04-01T00:00:00Z')
+
+    sids = compute_short_ids(tmp_path)
+    assert sids['a-exp'] < sids['b-exp']
+
+
+def test_compute_short_ids_unions_dir_and_index(tmp_path: Path):
+    """Index-only entries (teammate's scored runs without a local dir) are included in numbering."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'local', 'impl', 'ds', 'A', timestamp='2026-04-02T00:00:00Z')
+    (tmp_path / 'experiments' / 'experiments.jsonl').write_text(
+        json.dumps({'id': 'remote', 'implementation': 'impl', 'dataset': 'ds', 'timestamp': '2026-04-01T00:00:00Z'})
+        + '\n'
+    )
+    assert compute_short_ids(tmp_path) == {'remote': 1, 'local': 2}
+
+
+def test_decorate_with_short_ids_injects_field(tmp_path: Path):
+    """decorate_with_short_ids mutates entries with a computed short_id keyed off experiment_id or id."""
+    _setup_experiment(tmp_path, 'exp-a', 'impl', 'ds', 'A', timestamp='2026-04-01T00:00:00Z')
+    entries = [{'id': 'exp-a'}, {'experiment_id': 'exp-a'}, {'id': 'unknown'}]
+    decorate_with_short_ids(entries, tmp_path)
+    assert entries[0]['short_id'] == 1
+    assert entries[1]['short_id'] == 1
+    assert entries[2]['short_id'] is None
 
 
 # --- @ / @~N recency resolution ---
@@ -243,7 +307,6 @@ def _setup_experiment_with_timestamp(
     impl: str,
     dataset: str,
     timestamp: str,
-    short_id: int,
 ) -> None:
     """Create a minimal results.json with a specific timestamp for recency tests."""
     exp_dir = root / 'experiments' / experiment_id
@@ -252,7 +315,6 @@ def _setup_experiment_with_timestamp(
         json.dumps(
             {
                 'experiment_id': experiment_id,
-                'short_id': short_id,
                 'implementation': impl,
                 'dataset': dataset,
                 'timestamp': timestamp,
@@ -267,9 +329,9 @@ def _setup_experiment_with_timestamp(
 
 def test_list_experiments_sorted_newest_first(tmp_path: Path):
     """list_experiments returns all experiments sorted by timestamp descending."""
-    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00', 2)
-    _setup_experiment_with_timestamp(tmp_path, 'mid', 'a', 'ds', '2026-04-05T00:00:00', 3)
+    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'mid', 'a', 'ds', '2026-04-05T00:00:00')
 
     entries = list_experiments(tmp_path)
     assert [e['experiment_id'] for e in entries] == ['new', 'mid', 'old']
@@ -277,9 +339,9 @@ def test_list_experiments_sorted_newest_first(tmp_path: Path):
 
 def test_list_experiments_filters(tmp_path: Path):
     """impl and dataset filters narrow the result set by exact match."""
-    _setup_experiment_with_timestamp(tmp_path, 'ant-sample', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'oai-sample', 'openai', 'sample', '2026-04-02T00:00:00', 2)
-    _setup_experiment_with_timestamp(tmp_path, 'ant-full', 'anthropic', 'full', '2026-04-03T00:00:00', 3)
+    _setup_experiment_with_timestamp(tmp_path, 'ant-sample', 'anthropic', 'sample', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'oai-sample', 'openai', 'sample', '2026-04-02T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'ant-full', 'anthropic', 'full', '2026-04-03T00:00:00')
 
     ant_only = list_experiments(tmp_path, impl='anthropic')
     assert [e['experiment_id'] for e in ant_only] == ['ant-full', 'ant-sample']
@@ -293,17 +355,17 @@ def test_list_experiments_filters(tmp_path: Path):
 
 def test_resolve_at_returns_newest(tmp_path: Path):
     """@ returns the single most recent experiment by timestamp."""
-    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'old', 'a', 'ds', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'new', 'a', 'ds', '2026-04-10T00:00:00')
 
     assert resolve_experiment_id(tmp_path, '@') == 'new'
 
 
 def test_resolve_at_dash_n_walks_back(tmp_path: Path):
     """@~N returns the (N+1)th most recent experiment (0-indexed offset from the newest)."""
-    _setup_experiment_with_timestamp(tmp_path, 'third', 'a', 'ds', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'second', 'a', 'ds', '2026-04-02T00:00:00', 2)
-    _setup_experiment_with_timestamp(tmp_path, 'first', 'a', 'ds', '2026-04-03T00:00:00', 3)
+    _setup_experiment_with_timestamp(tmp_path, 'third', 'a', 'ds', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'second', 'a', 'ds', '2026-04-02T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'first', 'a', 'ds', '2026-04-03T00:00:00')
 
     assert resolve_experiment_id(tmp_path, '@') == 'first'
     assert resolve_experiment_id(tmp_path, '@~0') == 'first'  # @ == @-0
@@ -313,9 +375,9 @@ def test_resolve_at_dash_n_walks_back(tmp_path: Path):
 
 def test_resolve_at_with_impl_filter(tmp_path: Path):
     """@ with impl filter returns the newest matching that implementation, ignoring others."""
-    _setup_experiment_with_timestamp(tmp_path, 'ant-old', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'oai-newest', 'openai', 'sample', '2026-04-10T00:00:00', 2)
-    _setup_experiment_with_timestamp(tmp_path, 'ant-new', 'anthropic', 'sample', '2026-04-05T00:00:00', 3)
+    _setup_experiment_with_timestamp(tmp_path, 'ant-old', 'anthropic', 'sample', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'oai-newest', 'openai', 'sample', '2026-04-10T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'ant-new', 'anthropic', 'sample', '2026-04-05T00:00:00')
 
     assert resolve_experiment_id(tmp_path, '@', impl='anthropic') == 'ant-new'
     assert resolve_experiment_id(tmp_path, '@', impl='openai') == 'oai-newest'
@@ -323,8 +385,8 @@ def test_resolve_at_with_impl_filter(tmp_path: Path):
 
 def test_resolve_at_with_dataset_filter(tmp_path: Path):
     """@ with dataset filter narrows to that dataset only."""
-    _setup_experiment_with_timestamp(tmp_path, 'sample-old', 'a', 'sample', '2026-04-01T00:00:00', 1)
-    _setup_experiment_with_timestamp(tmp_path, 'full-new', 'a', 'full', '2026-04-10T00:00:00', 2)
+    _setup_experiment_with_timestamp(tmp_path, 'sample-old', 'a', 'sample', '2026-04-01T00:00:00')
+    _setup_experiment_with_timestamp(tmp_path, 'full-new', 'a', 'full', '2026-04-10T00:00:00')
 
     assert resolve_experiment_id(tmp_path, '@', dataset='sample') == 'sample-old'
 
@@ -337,7 +399,7 @@ def test_resolve_at_empty_project_errors(tmp_path: Path):
 
 def test_resolve_at_out_of_range_errors(tmp_path: Path):
     """@~N beyond the available experiments reports the real count in the error."""
-    _setup_experiment_with_timestamp(tmp_path, 'only', 'a', 'ds', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'only', 'a', 'ds', '2026-04-01T00:00:00')
 
     with pytest.raises(FileNotFoundError, match='@~5 is out of range: only 1 experiment'):
         resolve_experiment_id(tmp_path, '@~5')
@@ -345,7 +407,7 @@ def test_resolve_at_out_of_range_errors(tmp_path: Path):
 
 def test_resolve_at_empty_scope_mentions_filters(tmp_path: Path):
     """When filters knock out every experiment, the error names the filters so the user can debug."""
-    _setup_experiment_with_timestamp(tmp_path, 'exists', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'exists', 'anthropic', 'sample', '2026-04-01T00:00:00')
 
     with pytest.raises(FileNotFoundError, match=r'impl=openai'):
         resolve_experiment_id(tmp_path, '@', impl='openai')
@@ -378,7 +440,7 @@ def test_format_ref_medium_returns_plain_text_with_markup_chars():
 
 def test_resolve_short_id_ignores_impl_filter(tmp_path: Path):
     """short_id is globally unique, so impl/dataset filters are ignored for numeric lookups."""
-    _setup_experiment_with_timestamp(tmp_path, 'exp-ant', 'anthropic', 'sample', '2026-04-01T00:00:00', 1)
+    _setup_experiment_with_timestamp(tmp_path, 'exp-ant', 'anthropic', 'sample', '2026-04-01T00:00:00')
 
     # The lookup succeeds even though the filter would exclude the only match.
     assert resolve_experiment_id(tmp_path, '#1', impl='openai') == 'exp-ant'
@@ -388,9 +450,9 @@ def test_append_to_index_upserts_rescored_experiment(tmp_path: Path):
     """Re-scoring an experiment replaces its entry in place, not as a duplicate."""
     (tmp_path / 'experiments').mkdir()
 
-    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A', short_id=1)
-    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B', short_id=2)
-    _setup_experiment(tmp_path, 'exp-c', 'classify-api', 'test-ds', 'A', short_id=3)
+    _setup_experiment(tmp_path, 'exp-a', 'classify-api', 'test-ds', 'A')
+    _setup_experiment(tmp_path, 'exp-b', 'classify-api', 'test-ds', 'B')
+    _setup_experiment(tmp_path, 'exp-c', 'classify-api', 'test-ds', 'A')
 
     def _report(exp_id: str, accuracy: float) -> EvalReport:
         return EvalReport(
@@ -430,7 +492,6 @@ def test_index_records_avg_output_tokens(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': 7,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -488,7 +549,6 @@ def test_index_omits_avg_output_tokens_when_no_data(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': 8,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -517,7 +577,6 @@ def test_index_records_repeat_aware_metrics(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': 9,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
@@ -581,7 +640,6 @@ def test_index_omits_repeat_aware_metrics_for_single_repeat(tmp_path: Path):
         json.dumps(
             {
                 'experiment_id': exp_id,
-                'short_id': 10,
                 'implementation': 'classify-api',
                 'dataset': 'test-ds',
                 'timestamp': '2026-04-04T12:00:00Z',
