@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.progress import Progress, TaskID
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 from engram.config.loader import load_implementation, load_project
 from engram.datasets.loader import load_dataset_inputs
@@ -104,7 +104,13 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
         return result
 
     if mode.use_rich:
-        with Progress() as progress:
+        columns = (
+            TextColumn('[progress.description]{task.description}'),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(elapsed_when_finished=True),
+        )
+        with Progress(*columns) as progress:
             task = progress.add_task(f'Running {implementation_name}', total=total_triggers)
             results = _run_concurrent(inputs, _run_single, concurrency, repeats, progress, task)
     else:
