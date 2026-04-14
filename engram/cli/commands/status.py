@@ -13,6 +13,7 @@ from engram.config.discovery import (
 )
 from engram.config.loader import load_implementation, load_project
 from engram.config.validation import validate_project
+from engram.datasets.loader import load_dataset_labels
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import load_baselines
 
@@ -101,7 +102,14 @@ def _print_json_status(project, workflows, implementations, datasets, baselines,
         'project': {'name': project.name, 'description': project.description},
         'workflows': [{'name': name, 'baseline': baselines.get(name, {}).get('baseline')} for name in workflows],
         'implementations': impl_entries,
-        'datasets': [{'name': name, 'size': _count_inputs(root, name)} for name in datasets],
+        'datasets': [
+            {
+                'name': name,
+                'size': _count_inputs(root, name),
+                'labeled': _count_labeled(root, name, _count_inputs(root, name) or 0),
+            }
+            for name in datasets
+        ],
         'validation_errors': errors,
     }
     print(json.dumps(payload, indent=2))
@@ -115,10 +123,12 @@ def _print_datasets(root, datasets: list[str]) -> None:
     for name in datasets:
         link = _link(root / 'datasets' / name, name)
         count = _count_inputs(root, name)
-        if count is not None:
-            console.print(f'  {link} [dim]({count})[/dim]')
-        else:
+        if count is None:
             console.print(f'  {link}')
+            continue
+        labeled = _count_labeled(root, name, count)
+        suffix = f'({count}, unlabeled)' if labeled == 0 else f'({labeled}/{count} labeled)'
+        console.print(f'  {link} [dim]{suffix}[/dim]')
 
 
 def _link(path, label: str) -> str:
@@ -132,3 +142,16 @@ def _count_inputs(root, dataset_name: str) -> int | None:
     if not inputs_dir.exists():
         return None
     return sum(1 for f in inputs_dir.iterdir() if f.is_file())
+
+
+def _count_labeled(root, dataset_name: str, total: int) -> int:
+    """Count inputs that have a matching entry in labels.json."""
+    try:
+        labels = load_dataset_labels(root, dataset_name)
+    except (OSError, ValueError, TypeError):
+        return 0
+    if not labels:
+        return 0
+    inputs_dir = root / 'datasets' / dataset_name / 'inputs'
+    input_names = {f.name for f in inputs_dir.iterdir() if f.is_file()}
+    return min(total, sum(1 for name in labels if name in input_names))
