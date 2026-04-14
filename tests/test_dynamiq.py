@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import httpx
-
 from engram.config.sync import pull_config
 from engram.models.implementation import ConfigManagement, ImplementationConfig
 from engram.models.input import InputData
@@ -204,7 +202,7 @@ def test_dynamiq_runner_trigger_sync(tmp_path: Path):
         patch.dict('os.environ', {'DYNAMIQ_ACCESS_KEY': 'key', 'DYNAMIQ_JWT_TOKEN': 'jwt'}),
         patch('engram.runners.dynamiq.management_api', return_value=mock_app_response),
         patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response),
-        patch('engram.runners.dynamiq.get_trace', return_value=mock_trace),
+        patch('engram.runners.dynamiq.poll_trace_with_usage', return_value=mock_trace),
     ):
         runner = DynamiqRunner()
         result = runner.trigger(InputData(filename='test', text='test input'), impl_config, tmp_path)
@@ -216,8 +214,8 @@ def test_dynamiq_runner_trigger_sync(tmp_path: Path):
     assert result.trace_id == 'trace-123'
 
 
-def test_dynamiq_runner_trigger_sync_trace_fetch_fails(tmp_path: Path):
-    """Falls back to output-only RunResult if the trace fetch fails."""
+def test_dynamiq_runner_trigger_sync_trace_poll_times_out(tmp_path: Path):
+    """Falls back to output-only RunResult when trace usage never populates."""
     impl_config = _make_dynamiq_config()
 
     mock_app_response = {'data': {'id': 'test-app-id', 'hostname': 'app.example.com'}}
@@ -229,7 +227,7 @@ def test_dynamiq_runner_trigger_sync_trace_fetch_fails(tmp_path: Path):
         patch.dict('os.environ', {'DYNAMIQ_ACCESS_KEY': 'key', 'DYNAMIQ_JWT_TOKEN': 'jwt'}),
         patch('engram.runners.dynamiq.management_api', return_value=mock_app_response),
         patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response),
-        patch('engram.runners.dynamiq.get_trace', side_effect=httpx.HTTPError('boom')),
+        patch('engram.runners.dynamiq.poll_trace_with_usage', return_value=None),
     ):
         runner = DynamiqRunner()
         result = runner.trigger(InputData(filename='test', text='test input'), impl_config, tmp_path)
@@ -248,13 +246,13 @@ def test_dynamiq_runner_caches_hostname(tmp_path: Path):
     mock_trigger_response = MagicMock()
     mock_trigger_response.status_code = 200
     mock_trigger_response.json.return_value = {'id': 'trace-123', 'output': {'topic': 'A'}}
-    mock_trace = {'id': 'trace-123', 'output': {'topic': 'A'}, 'usage': {}}
+    mock_trace = {'id': 'trace-123', 'output': {'topic': 'A'}, 'usage': {'total_tokens': 150}}
 
     with (
         patch.dict('os.environ', {'DYNAMIQ_ACCESS_KEY': 'key', 'DYNAMIQ_JWT_TOKEN': 'jwt'}),
         patch('engram.runners.dynamiq.management_api', return_value=mock_app_response) as mock_mgmt,
         patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response),
-        patch('engram.runners.dynamiq.get_trace', return_value=mock_trace),
+        patch('engram.runners.dynamiq.poll_trace_with_usage', return_value=mock_trace),
     ):
         runner = DynamiqRunner()
         runner.trigger(InputData(filename='test1', text='input 1'), impl_config, tmp_path)

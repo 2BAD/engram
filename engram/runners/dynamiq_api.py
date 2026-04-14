@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -101,3 +102,42 @@ def get_trace(jwt_env: str, trace_id: str, cache_dir: Path | None = None) -> dic
     trace_dir.mkdir(parents=True, exist_ok=True)
     cached.write_text(json.dumps(result))
     return result
+
+
+def poll_trace_with_usage(
+    jwt_env: str,
+    trace_id: str,
+    cache_dir: Path | None = None,
+    timeout: float = 30.0,
+    interval: float = 2.0,
+) -> dict[str, Any] | None:
+    """
+    Fetch a trace, polling until ``usage`` is populated.
+
+    Dynamiq writes the trace record immediately on workflow completion but
+    aggregates token usage asynchronously — a single fetch right after the sync
+    trigger often returns empty usage and a cost of zero. A cached copy without
+    usage is treated as stale and re-fetched. Returns ``None`` on timeout.
+    """
+    if cache_dir is None:
+        cache_dir = Path('data') / 'cache'
+    trace_dir = cache_dir / 'traces'
+    cached = trace_dir / f'{trace_id}.json'
+    if cached.exists():
+        trace = json.loads(cached.read_text())
+        if trace.get('usage', {}).get('total_tokens'):
+            return trace
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            trace = management_api(jwt_env, f'/tracing/traces/{trace_id}')
+            if trace.get('usage', {}).get('total_tokens'):
+                trace_dir.mkdir(parents=True, exist_ok=True)
+                cached.write_text(json.dumps(trace))
+                return trace
+        except httpx.HTTPError:
+            pass
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(interval)

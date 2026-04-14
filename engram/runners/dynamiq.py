@@ -19,7 +19,7 @@ import httpx
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
-from engram.runners.dynamiq_api import get_trace, management_api
+from engram.runners.dynamiq_api import get_trace, management_api, poll_trace_with_usage
 from engram.runners.errors import MissingAPIKeyError
 
 if TYPE_CHECKING:
@@ -143,11 +143,9 @@ class DynamiqRunner(Runner):
 
         if 'output' in body:
             if trace_id:
-                try:
-                    full_trace = get_trace(self._jwt_env, trace_id, self._cache_dir)
+                full_trace = poll_trace_with_usage(self._jwt_env, trace_id, self._cache_dir)
+                if full_trace is not None:
                     return _build_result_from_trace(full_trace, latency, trace_id)
-                except httpx.HTTPError:
-                    pass
             return _build_result_from_output(body['output'], latency, trace_id)
 
         if not trace_id:
