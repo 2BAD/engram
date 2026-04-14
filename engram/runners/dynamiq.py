@@ -139,11 +139,17 @@ class DynamiqRunner(Runner):
             )
 
         body = resp.json()
+        trace_id = body.get('id', '')
 
         if 'output' in body:
-            return _build_result_from_output(body['output'], latency)
+            if trace_id:
+                try:
+                    full_trace = get_trace(self._jwt_env, trace_id, self._cache_dir)
+                    return _build_result_from_trace(full_trace, latency, trace_id)
+                except httpx.HTTPError:
+                    pass
+            return _build_result_from_output(body['output'], latency, trace_id)
 
-        trace_id = body.get('id')
         if not trace_id:
             return RunResult(input_file='', status='failed', latency_ms=latency, error='No trace_id in async response')
 
