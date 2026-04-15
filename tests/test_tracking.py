@@ -800,8 +800,8 @@ def test_compare_experiments(tmp_path: Path):
 
 
 @pytest.mark.usefixtures('rich_mode')
-def test_compare_command_prints_per_field_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """engram compare renders one table per field with all metrics as rows."""
+def test_compare_command_prints_summary_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram compare defaults to a single aggregated table with metrics as columns."""
     from typer.testing import CliRunner  # noqa: PLC0415 — only needed for this CLI-level test
 
     from engram.cli import app  # noqa: PLC0415
@@ -812,12 +812,14 @@ def test_compare_command_prints_per_field_tables(tmp_path: Path, monkeypatch: py
     result = runner.invoke(app, ['compare', id_a, id_b])
 
     assert result.exit_code == 0
-    # Per-field table uses the field name as title and contains all metric rows.
+    # Aggregated table contains the field as a row and metrics as columns.
     assert 'topic' in result.output
     assert 'Accuracy' in result.output
     assert 'Precision' in result.output
     assert 'Recall' in result.output
     assert 'F1' in result.output
+    # A → B (Δ) cells render the arrow between the two values.
+    assert '→' in result.output
     # Cost table still renders.
     assert 'Cost Comparison' in result.output
     # Regressions message still triggered.
@@ -828,6 +830,29 @@ def test_compare_command_prints_per_field_tables(tmp_path: Path, monkeypatch: py
     assert 'classify-api/test-ds' in result.output
     assert id_a not in result.output
     assert id_b not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_fields_format_prints_per_field_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """engram compare --format fields renders one table per field with metrics as rows."""
+    from typer.testing import CliRunner  # noqa: PLC0415 — only needed for this CLI-level test
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner(env={'COLUMNS': '200'})
+    result = runner.invoke(app, ['compare', id_a, id_b, '--format', 'fields'])
+
+    assert result.exit_code == 0
+    # Per-field table uses the field name as title and contains all metric rows.
+    assert 'topic' in result.output
+    assert 'Accuracy' in result.output
+    assert 'Precision' in result.output
+    assert 'Recall' in result.output
+    assert 'F1' in result.output
+    assert 'Cost Comparison' in result.output
+    assert 'Regressions detected' in result.output
 
 
 def test_compare_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

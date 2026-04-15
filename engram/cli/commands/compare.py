@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import asdict
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
@@ -17,7 +18,7 @@ from engram.display.experiment_ref import format_ref_medium, format_ref_short, l
 from engram.eval.results import load_results
 from engram.observability.output_mode import get_output_mode
 from engram.tracking.baseline import get_workflow_baseline, lookup_experiment
-from engram.tracking.comparison import ComparisonResult, compare_experiments, diff_config_snapshots
+from engram.tracking.comparison import ComparisonResult, FieldDelta, compare_experiments, diff_config_snapshots
 from engram.tracking.index import decorate_with_short_ids
 
 console = Console()
@@ -28,7 +29,12 @@ _NA_CELL = '[dim]—[/dim]'
 _METRICS = ('accuracy', 'precision', 'recall', 'f1')
 
 
-def _print_field_table(delta, from_ref: str, to_ref: str) -> None:
+class CompareFormat(str, Enum):
+    FIELDS = 'fields'
+    SUMMARY = 'summary'
+
+
+def _print_field_table(delta: FieldDelta, from_ref: str, to_ref: str) -> None:
     """Render one table per field with all metrics as rows."""
     table = Table(title=delta.field_name)
     table.add_column(Text('Metric', justify='center'), style='bold')
@@ -52,6 +58,36 @@ def _print_field_table(delta, from_ref: str, to_ref: str) -> None:
             f'{b_val:.1%}',
             f'[{color}]{sign}{delta_val:.1%}[/{color}]',
         )
+
+    console.print(table)
+    console.print()
+
+
+def _format_compare_cell(a_val: float, b_val: float) -> str:
+    """Render a single ``A → B (Δ)`` cell with the delta colored by sign."""
+    delta_val = b_val - a_val
+    color = 'red' if delta_val < 0 else 'green'
+    sign = '+' if delta_val >= 0 else ''
+    return f'{a_val:.1%} → {b_val:.1%} [{color}]({sign}{delta_val:.1%})[/{color}]'
+
+
+def _print_summary_table(deltas: list[FieldDelta], from_ref: str, to_ref: str) -> None:
+    """Render a single aggregated table mirroring ``engram score``, with ``A → B (Δ)`` cells."""
+    table = Table(title=f'Field Metrics: {from_ref} → {to_ref}')
+    table.add_column(Text('Field', justify='center'), style='bold')
+    for metric in _METRICS:
+        table.add_column(Text(metric.capitalize(), justify='center'), justify='right')
+
+    for delta in deltas:
+        row = [delta.field_name, _format_compare_cell(delta.accuracy_a, delta.accuracy_b)]
+        for metric in _METRICS[1:]:
+            if not delta.is_classification:
+                row.append(_NA_CELL)
+                continue
+            a_val = getattr(delta, f'{metric}_a')
+            b_val = getattr(delta, f'{metric}_b')
+            row.append(_format_compare_cell(a_val, b_val))
+        table.add_row(*row)
 
     console.print(table)
     console.print()
@@ -128,7 +164,53 @@ def _resolve_compare_pair(
     return baseline, experiment_a
 
 
-def compare_command(
+def _render_comparison(
+    root: Path,
+    result: ComparisonResult,
+    diff_lines: list[str],
+    from_id: str,
+    to_id: str,
+    output_format: CompareFormat,
+) -> None:
+    """Print the rich-mode comparison view: headers, drift warning, field tables, cost, config diffs."""
+    from_meta, _ = load_results(root / 'experiments' / from_id)
+    to_meta, _ = load_results(root / 'experiments' / to_id)
+    decorate_with_short_ids([from_meta, to_meta], root)
+    from_short = _short_header(from_meta)
+    to_short = _short_header(to_meta)
+
+    console.print(f'  {linkify_ref(format_ref_medium(from_meta), root / "experiments" / from_id)}')
+    console.print(f'  {linkify_ref(format_ref_medium(to_meta), root / "experiments" / to_id)}')
+    console.print()
+
+    _warn_labels_drift(result, from_meta, to_meta)
+
+    if output_format is CompareFormat.SUMMARY:
+        _print_summary_table(list(result.field_deltas.values()), from_short, to_short)
+    else:
+        for delta in result.field_deltas.values():
+            _print_field_table(delta, from_short, to_short)
+
+    cost_table = Table(title='Cost Comparison')
+    cost_table.add_column(Text('Metric', justify='center'), style='bold')
+    cost_table.add_column(Text(from_short, justify='center'), justify='right')
+    cost_table.add_column(Text(to_short, justify='center'), justify='right')
+    cost_table.add_row('Total', f'${result.cost_a.get("total", 0):.4f}', f'${result.cost_b.get("total", 0):.4f}')
+    cost_table.add_row('Average', f'${result.cost_a.get("avg", 0):.4f}', f'${result.cost_b.get("avg", 0):.4f}')
+    console.print(cost_table)
+    console.print()
+
+    if diff_lines:
+        console.print('[bold]Config Changes:[/bold]')
+        for line in diff_lines:
+            console.print(f'  {line}')
+        console.print()
+
+    if result.regressions:
+        console.print(f'[red bold]Regressions detected:[/red bold] {", ".join(result.regressions)}')
+
+
+def compare_command(  # noqa: PLR0913 — CLI options map 1:1 to flags
     experiment_a: Annotated[
         str | None,
         typer.Argument(
@@ -167,6 +249,14 @@ def compare_command(
             '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
         ),
     ] = None,
+    output_format: Annotated[
+        CompareFormat,
+        typer.Option(
+            '--format',
+            '-f',
+            help='summary: single aggregated table with A → B (Δ) cells (default). fields: one table per field.',
+        ),
+    ] = CompareFormat.SUMMARY,
 ) -> None:
     """Compare two experiments: accuracy deltas, cost, config diffs."""
     root = find_project_root()
@@ -195,38 +285,4 @@ def compare_command(
         print(json.dumps(payload, indent=2))
         return
 
-    from_meta, _ = load_results(root / 'experiments' / from_id)
-    to_meta, _ = load_results(root / 'experiments' / to_id)
-    decorate_with_short_ids([from_meta, to_meta], root)
-    from_short = _short_header(from_meta)
-    to_short = _short_header(to_meta)
-
-    console.print(f'  {linkify_ref(format_ref_medium(from_meta), root / "experiments" / from_id)}')
-    console.print(f'  {linkify_ref(format_ref_medium(to_meta), root / "experiments" / to_id)}')
-    console.print()
-
-    _warn_labels_drift(result, from_meta, to_meta)
-
-    for delta in result.field_deltas.values():
-        _print_field_table(delta, from_short, to_short)
-
-    # Cost table
-    cost_table = Table(title='Cost Comparison')
-    cost_table.add_column(Text('Metric', justify='center'), style='bold')
-    cost_table.add_column(Text(from_short, justify='center'), justify='right')
-    cost_table.add_column(Text(to_short, justify='center'), justify='right')
-
-    cost_table.add_row('Total', f'${result.cost_a.get("total", 0):.4f}', f'${result.cost_b.get("total", 0):.4f}')
-    cost_table.add_row('Average', f'${result.cost_a.get("avg", 0):.4f}', f'${result.cost_b.get("avg", 0):.4f}')
-
-    console.print(cost_table)
-    console.print()
-
-    if diff_lines:
-        console.print('[bold]Config Changes:[/bold]')
-        for line in diff_lines:
-            console.print(f'  {line}')
-        console.print()
-
-    if result.regressions:
-        console.print(f'[red bold]Regressions detected:[/red bold] {", ".join(result.regressions)}')
+    _render_comparison(root, result, diff_lines, from_id, to_id, output_format)
