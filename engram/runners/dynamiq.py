@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +47,13 @@ class DynamiqRunner(Runner):
         self._jwt_env: str = ''
         self._cache_dir: Path | None = None
         self._initialized = False
+        # Correlation UUIDs injected into trigger inputs as ``_engram_id`` so finalize
+        # can join traces back to results. Keyed by (input_file, trigger ordinal within
+        # that file) because the same filename can appear across repeats.
+        self._correlations: dict[tuple[str, int], str] = {}
+        self._trigger_counts: dict[str, int] = {}
+        self._run_start: datetime | None = None
+        self._disable_correlation = False
 
     def required_env_vars(self, impl_config: ImplementationConfig) -> list[str]:
         rc = impl_config.runner_config
@@ -71,6 +80,7 @@ class DynamiqRunner(Runner):
             raise MissingAPIKeyError(env_var) from e
         self._jwt_env = impl_config.config_management.jwt_env
         self._cache_dir = impl_dir.parent.parent / 'data' / 'cache'
+        self._disable_correlation = bool(rc.get('disable_correlation', False))
 
         app = management_api(self._jwt_env, f'/apps/{self._app_id}')
         self._hostname = app.get('data', app).get('hostname', '')
@@ -86,24 +96,39 @@ class DynamiqRunner(Runner):
         if error:
             return RunResult(input_file='', status='failed', error=error)
 
+        if self._run_start is None:
+            self._run_start = datetime.now(UTC)
+
         rc = impl_config.runner_config
         poll_config = (float(rc.get('poll_timeout', '600')), float(rc.get('poll_interval', '15')))
 
         # Dynamiq HTTP trigger expects text input.
         text = input_data.text if input_data.text is not None else input_data.text_for_display
 
-        start = time.monotonic()
-        return self._trigger_and_collect(text, start, poll_config)
+        correlation_id = ''
+        if not self._disable_correlation:
+            correlation_id = uuid.uuid4().hex
+            ordinal = self._trigger_counts.get(input_data.filename, 0)
+            self._trigger_counts[input_data.filename] = ordinal + 1
+            self._correlations[(input_data.filename, ordinal)] = correlation_id
 
-    def _post_with_retry(self, input_data: str, max_retries: int = 5) -> httpx.Response | RunResult:
+        start = time.monotonic()
+        return self._trigger_and_collect(text, start, poll_config, correlation_id)
+
+    def _post_with_retry(
+        self, input_data: str, correlation_id: str = '', max_retries: int = 5
+    ) -> httpx.Response | RunResult:
         """POST to the Dynamiq trigger endpoint with exponential backoff on 429/5xx."""
+        payload: dict[str, Any] = {'input': input_data}
+        if correlation_id:
+            payload['_engram_id'] = correlation_id
         last_error: str = ''
         for attempt in range(max_retries + 1):
             try:
                 resp = httpx.post(
                     f'https://{self._hostname}',
                     headers={'Authorization': f'Bearer {self._access_key}', 'Content-Type': 'application/json'},
-                    json={'input': {'input': input_data}},
+                    json={'input': payload},
                     timeout=180,
                 )
             except httpx.HTTPError as e:
@@ -124,9 +149,11 @@ class DynamiqRunner(Runner):
 
         return RunResult(input_file='', status='failed', error=last_error)
 
-    def _trigger_and_collect(self, input_data: str, start: float, poll_config: tuple[float, float]) -> RunResult:
+    def _trigger_and_collect(
+        self, input_data: str, start: float, poll_config: tuple[float, float], correlation_id: str = ''
+    ) -> RunResult:
         """Send the HTTP trigger and handle sync/async response paths."""
-        resp = self._post_with_retry(input_data)
+        resp = self._post_with_retry(input_data, correlation_id)
         if isinstance(resp, RunResult):
             resp.latency_ms = (time.monotonic() - start) * 1000
             return resp

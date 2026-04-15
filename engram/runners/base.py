@@ -28,6 +28,10 @@ class Runner(ABC):
         """Optional hook: pre-load pricing data with project overrides applied. No-op by default."""
         return
 
+    def finalize(self, results: list[RunResult], impl_config: ImplementationConfig, impl_dir: Path) -> None:
+        """Optional post-run hook for out-of-band enrichment (e.g. Dynamiq cost backfill). No-op by default."""
+        _ = (results, impl_config, impl_dir)
+
     def required_env_vars(self, impl_config: ImplementationConfig) -> list[str]:
         """Env vars this runner needs set for the given implementation; empty by default."""
         _ = impl_config
