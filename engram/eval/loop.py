@@ -26,7 +26,7 @@ from engram.observability.output_mode import get_output_mode
 from engram.runners.registry import get_runner
 
 
-def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each option maps to a CLI flag
+def run_eval(  # noqa: PLR0913, PLR0915 — top-level orchestration entry; each option maps to a CLI flag
     root: Path,
     implementation_name: str,
     dataset_name: str,
@@ -122,6 +122,11 @@ def run_eval(  # noqa: PLR0913 — top-level orchestration entry point; each opt
         )
         results = _run_concurrent(inputs, _run_single, concurrency, repeats)
         log_event('run_complete', experiment_id=experiment_id, total=len(results))
+
+    try:
+        runner.finalize(results, impl_config, impl_dir)
+    except Exception as exc:  # noqa: BLE001 — finalize is best-effort enrichment; never block persistence
+        log_event('finalize_failed', level='WARNING', runner=impl_config.runner, error=str(exc))
 
     # Save results
     exp_dir = root / 'experiments' / experiment_id

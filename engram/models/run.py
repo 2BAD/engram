@@ -25,6 +25,9 @@ class RunResult:
     latency_ms: float = 0.0
     error: str = ''
     trace_id: str = ''
+    # Runner-injected key used to correlate out-of-band enrichment (e.g. Dynamiq's finalize
+    # backfills cost by matching this against ``trace.input._engram_id``). Empty when the
+    # runner doesn't need post-hoc correlation.
+    correlation_id: str = ''
     # Index into the repeat group for this input. 0 for single-repeat runs (the default).
-    # Older results.json files without this field load with repeat_index=0 unchanged.
     repeat_index: int = 0

@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +20,7 @@ import httpx
 
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
+from engram.observability.logging import log_event
 from engram.runners.base import Runner
 from engram.runners.dynamiq_api import get_trace, management_api, poll_trace_with_usage
 from engram.runners.errors import MissingAPIKeyError
@@ -47,11 +48,6 @@ class DynamiqRunner(Runner):
         self._jwt_env: str = ''
         self._cache_dir: Path | None = None
         self._initialized = False
-        # Correlation UUIDs injected into trigger inputs as ``_engram_id`` so finalize
-        # can join traces back to results. Keyed by (input_file, trigger ordinal within
-        # that file) because the same filename can appear across repeats.
-        self._correlations: dict[tuple[str, int], str] = {}
-        self._trigger_counts: dict[str, int] = {}
         self._run_start: datetime | None = None
         self._disable_correlation = False
 
@@ -105,15 +101,12 @@ class DynamiqRunner(Runner):
         # Dynamiq HTTP trigger expects text input.
         text = input_data.text if input_data.text is not None else input_data.text_for_display
 
-        correlation_id = ''
-        if not self._disable_correlation:
-            correlation_id = uuid.uuid4().hex
-            ordinal = self._trigger_counts.get(input_data.filename, 0)
-            self._trigger_counts[input_data.filename] = ordinal + 1
-            self._correlations[(input_data.filename, ordinal)] = correlation_id
+        correlation_id = '' if self._disable_correlation else uuid.uuid4().hex
 
         start = time.monotonic()
-        return self._trigger_and_collect(text, start, poll_config, correlation_id)
+        result = self._trigger_and_collect(text, start, poll_config, correlation_id)
+        result.correlation_id = correlation_id
+        return result
 
     def _post_with_retry(
         self, input_data: str, correlation_id: str = '', max_retries: int = 5
@@ -179,6 +172,75 @@ class DynamiqRunner(Runner):
             return RunResult(input_file='', status='failed', latency_ms=latency, error='No trace_id in async response')
 
         return _await_trace(self._jwt_env, self._app_id, trace_id, start, poll_config, self._cache_dir)
+
+    def finalize(self, results: list[RunResult], impl_config: ImplementationConfig, impl_dir: Path) -> None:
+        """
+        Backfill usage and cost by joining Dynamiq traces on ``_engram_id``.
+
+        Dynamiq's sync trigger response doesn't include the trace id and there's no
+        resolver endpoint, so per-call cost can only be recovered after the fact by
+        matching traces via a correlation UUID embedded in the trigger input.
+        """
+        if self._disable_correlation or self._run_start is None:
+            return
+
+        wanted = {r.correlation_id: r for r in results if r.correlation_id and r.status == 'succeeded'}
+        if not wanted:
+            return
+
+        error = self._ensure_initialized(impl_config, impl_dir)
+        if error:
+            return
+
+        cutoff = self._run_start - timedelta(seconds=60)
+        self._backfill_from_traces(wanted, cutoff)
+        self._retry_for_usage_lag(wanted)
+
+        unmatched = [cid for cid, r in wanted.items() if r.cost_usd == 0.0]
+        if unmatched:
+            log_event(
+                'dynamiq_finalize_unmatched',
+                level='WARNING',
+                total=len(wanted),
+                unmatched=len(unmatched),
+            )
+
+    def _backfill_from_traces(self, wanted: dict[str, RunResult], cutoff: datetime) -> None:
+        """Paginate the traces list, patch any result whose correlation id matches."""
+        remaining = dict(wanted)
+        page = 1
+        while remaining:
+            resp = management_api(
+                self._jwt_env,
+                f'/apps/{self._app_id}/traces',
+                {'page': page, 'page_size': _TRACE_PAGE_SIZE, 'sort': '-started_at'},
+            )
+            data = resp.get('data', [])
+            if not data:
+                break
+
+            for trace in data:
+                cid = _trace_engram_id(trace)
+                result = remaining.pop(cid, None) if cid else None
+                if result is not None:
+                    _apply_trace_to_result(result, trace)
+
+            oldest = data[-1].get('started_at', '')
+            if oldest and oldest < cutoff.isoformat():
+                break
+
+            total = resp.get('pagination', {}).get('total_count', 0)
+            if len(data) < _TRACE_PAGE_SIZE or page * _TRACE_PAGE_SIZE >= total:
+                break
+            page += 1
+
+    def _retry_for_usage_lag(self, wanted: dict[str, RunResult]) -> None:
+        """Re-poll each matched trace whose usage didn't aggregate in time for the first pass."""
+        for result in wanted.values():
+            if result.trace_id and result.cost_usd == 0.0:
+                full = poll_trace_with_usage(self._jwt_env, result.trace_id, self._cache_dir)
+                if full is not None:
+                    _apply_trace_to_result(result, full)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Snapshot the deployed workflow config from Dynamiq."""
@@ -315,6 +377,24 @@ def _build_result_from_output(output: dict[str, Any], latency_ms: float, trace_i
         latency_ms=latency_ms,
         trace_id=trace_id,
     )
+
+
+def _trace_engram_id(trace: dict[str, Any]) -> str:
+    """Read the correlation UUID injected at trigger time from a trace record."""
+    tinput = trace.get('input', {})
+    return tinput.get('_engram_id', '') if isinstance(tinput, dict) else ''
+
+
+def _apply_trace_to_result(result: RunResult, trace: dict[str, Any]) -> None:
+    """Patch usage, cost, and trace_id from a matched trace onto a result."""
+    usage_data = trace.get('usage', {}) or {}
+    result.trace_id = trace.get('id', result.trace_id)
+    result.usage = TokenUsage(
+        prompt_tokens=usage_data.get('prompt_tokens', 0),
+        completion_tokens=usage_data.get('completion_tokens', 0),
+        total_tokens=usage_data.get('total_tokens', 0),
+    )
+    result.cost_usd = usage_data.get('total_tokens_cost_usd', 0.0)
 
 
 def _build_result_from_trace(trace: dict[str, Any], latency_ms: float, trace_id: str = '') -> RunResult:

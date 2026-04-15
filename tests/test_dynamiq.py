@@ -1,11 +1,13 @@
 """Tests for Dynamiq runner and config sync."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from engram.config.sync import pull_config
 from engram.models.implementation import ConfigManagement, ImplementationConfig
 from engram.models.input import InputData
+from engram.models.run import RunResult
 from engram.runners.dynamiq import (
     DynamiqRunner,
     _build_result_from_output,
@@ -238,6 +240,58 @@ def test_dynamiq_runner_trigger_sync_trace_poll_times_out(tmp_path: Path):
     assert result.trace_id == 'trace-123'
 
 
+def test_dynamiq_runner_injects_correlation_key(tmp_path: Path):
+    """POST body carries _engram_id alongside the input text, and it's stamped onto the result."""
+    impl_config = _make_dynamiq_config()
+
+    mock_app_response = {'data': {'hostname': 'app.example.com'}}
+    mock_trigger_response = MagicMock()
+    mock_trigger_response.status_code = 200
+    mock_trigger_response.json.return_value = {'output': {'topic': 'A'}}
+
+    with (
+        patch.dict('os.environ', {'DYNAMIQ_ACCESS_KEY': 'key', 'DYNAMIQ_JWT_TOKEN': 'jwt'}),
+        patch('engram.runners.dynamiq.management_api', return_value=mock_app_response),
+        patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response) as mock_post,
+    ):
+        runner = DynamiqRunner()
+        result = runner.trigger(InputData(filename='a', text='hello'), impl_config, tmp_path)
+
+    body = mock_post.call_args.kwargs['json']['input']
+    assert body['input'] == 'hello'
+    assert '_engram_id' in body
+    assert len(body['_engram_id']) == 32
+    assert result.correlation_id == body['_engram_id']
+
+
+def test_dynamiq_runner_disable_correlation(tmp_path: Path):
+    """disable_correlation=True strips _engram_id from the payload and leaves correlation_id empty."""
+    impl_config = _make_dynamiq_config(
+        runner_config={
+            'app_id': 'test-app-id',
+            'access_key_env': 'DYNAMIQ_ACCESS_KEY',
+            'disable_correlation': True,
+        }
+    )
+
+    mock_app_response = {'data': {'hostname': 'app.example.com'}}
+    mock_trigger_response = MagicMock()
+    mock_trigger_response.status_code = 200
+    mock_trigger_response.json.return_value = {'output': {'topic': 'A'}}
+
+    with (
+        patch.dict('os.environ', {'DYNAMIQ_ACCESS_KEY': 'key', 'DYNAMIQ_JWT_TOKEN': 'jwt'}),
+        patch('engram.runners.dynamiq.management_api', return_value=mock_app_response),
+        patch('engram.runners.dynamiq.httpx.post', return_value=mock_trigger_response) as mock_post,
+    ):
+        runner = DynamiqRunner()
+        result = runner.trigger(InputData(filename='a', text='hello'), impl_config, tmp_path)
+
+    body = mock_post.call_args.kwargs['json']['input']
+    assert '_engram_id' not in body
+    assert result.correlation_id == ''
+
+
 def test_dynamiq_runner_caches_hostname(tmp_path: Path):
     """Verify hostname is resolved once, not per trigger call."""
     impl_config = _make_dynamiq_config()
@@ -260,6 +314,160 @@ def test_dynamiq_runner_caches_hostname(tmp_path: Path):
 
     # management_api called once for hostname, not twice
     assert mock_mgmt.call_count == 1
+
+
+# --- Runner finalize (cost backfill) ---
+
+
+def _make_runner_ready(runner: DynamiqRunner, tmp_path: Path, disable: bool = False) -> None:
+    """Short-circuit ``_ensure_initialized`` so finalize tests can skip the app-lookup call."""
+    runner._app_id = 'test-app-id'
+    runner._jwt_env = 'DYNAMIQ_JWT_TOKEN'
+    runner._cache_dir = tmp_path / 'cache'
+    runner._initialized = True
+    runner._disable_correlation = disable
+    runner._run_start = datetime.now(UTC)
+
+
+def test_dynamiq_finalize_patches_usage_and_cost(tmp_path: Path):
+    """Finalize pages traces, joins on _engram_id, and patches cost/usage/trace_id."""
+    impl_config = _make_dynamiq_config()
+    results = [
+        RunResult(input_file='a.txt', status='succeeded', correlation_id='cid-alpha'),
+        RunResult(input_file='b.txt', status='succeeded', correlation_id='cid-beta'),
+    ]
+
+    traces = {
+        'data': [
+            {
+                'id': 'trace-beta',
+                'status': 'succeeded',
+                'started_at': '2026-04-15T00:00:01Z',
+                'input': {'input': 'b-text', '_engram_id': 'cid-beta'},
+                'usage': {
+                    'prompt_tokens': 40,
+                    'completion_tokens': 10,
+                    'total_tokens': 50,
+                    'total_tokens_cost_usd': 0.002,
+                },
+            },
+            {
+                'id': 'trace-alpha',
+                'status': 'succeeded',
+                'started_at': '2026-04-15T00:00:00Z',
+                'input': {'input': 'a-text', '_engram_id': 'cid-alpha'},
+                'usage': {
+                    'prompt_tokens': 100,
+                    'completion_tokens': 50,
+                    'total_tokens': 150,
+                    'total_tokens_cost_usd': 0.005,
+                },
+            },
+        ],
+        'pagination': {'total_count': 2},
+    }
+
+    runner = DynamiqRunner()
+    _make_runner_ready(runner, tmp_path)
+
+    with patch('engram.runners.dynamiq.management_api', return_value=traces):
+        runner.finalize(results, impl_config, tmp_path)
+
+    by_file = {r.input_file: r for r in results}
+    assert by_file['a.txt'].trace_id == 'trace-alpha'
+    assert by_file['a.txt'].cost_usd == 0.005
+    assert by_file['a.txt'].usage.total_tokens == 150
+    assert by_file['b.txt'].trace_id == 'trace-beta'
+    assert by_file['b.txt'].cost_usd == 0.002
+
+
+def test_dynamiq_finalize_usage_lag_retry(tmp_path: Path):
+    """Trace found but usage empty: finalize re-polls that trace to pick up aggregated usage."""
+    impl_config = _make_dynamiq_config()
+    results = [RunResult(input_file='a.txt', status='succeeded', correlation_id='cid-a')]
+
+    traces = {
+        'data': [
+            {
+                'id': 'trace-a',
+                'status': 'succeeded',
+                'started_at': '2026-04-15T00:00:00Z',
+                'input': {'input': 'a-text', '_engram_id': 'cid-a'},
+                'usage': {},
+            }
+        ],
+        'pagination': {'total_count': 1},
+    }
+    repolled = {
+        'id': 'trace-a',
+        'usage': {'prompt_tokens': 80, 'completion_tokens': 20, 'total_tokens': 100, 'total_tokens_cost_usd': 0.003},
+    }
+
+    runner = DynamiqRunner()
+    _make_runner_ready(runner, tmp_path)
+
+    with (
+        patch('engram.runners.dynamiq.management_api', return_value=traces),
+        patch('engram.runners.dynamiq.poll_trace_with_usage', return_value=repolled) as mock_poll,
+    ):
+        runner.finalize(results, impl_config, tmp_path)
+
+    assert results[0].cost_usd == 0.003
+    assert results[0].usage.total_tokens == 100
+    assert mock_poll.call_args.args[1] == 'trace-a'
+
+
+def test_dynamiq_finalize_unmatched_leaves_cost_zero(tmp_path: Path):
+    """No trace carries our correlation id → result stays at cost 0, warning logged."""
+    impl_config = _make_dynamiq_config()
+    results = [RunResult(input_file='a.txt', status='succeeded', correlation_id='cid-missing')]
+
+    traces = {
+        'data': [
+            {
+                'id': 'trace-other',
+                'status': 'succeeded',
+                'started_at': '2026-04-15T00:00:00Z',
+                'input': {'input': 'other', '_engram_id': 'cid-someone-else'},
+                'usage': {'total_tokens': 10, 'total_tokens_cost_usd': 0.001},
+            }
+        ],
+        'pagination': {'total_count': 1},
+    }
+
+    runner = DynamiqRunner()
+    _make_runner_ready(runner, tmp_path)
+
+    with (
+        patch('engram.runners.dynamiq.management_api', return_value=traces),
+        patch('engram.runners.dynamiq.poll_trace_with_usage', return_value=None),
+        patch('engram.runners.dynamiq.log_event') as mock_log,
+    ):
+        runner.finalize(results, impl_config, tmp_path)
+
+    assert results[0].cost_usd == 0.0
+    assert results[0].trace_id == ''
+    assert any(call.args[0] == 'dynamiq_finalize_unmatched' for call in mock_log.call_args_list)
+
+
+def test_dynamiq_finalize_disabled_is_noop(tmp_path: Path):
+    """disable_correlation short-circuits finalize without calling the API."""
+    impl_config = _make_dynamiq_config(
+        runner_config={
+            'app_id': 'test-app-id',
+            'access_key_env': 'DYNAMIQ_ACCESS_KEY',
+            'disable_correlation': True,
+        }
+    )
+    results = [RunResult(input_file='a.txt', status='succeeded', correlation_id='')]
+
+    runner = DynamiqRunner()
+    _make_runner_ready(runner, tmp_path, disable=True)
+
+    with patch('engram.runners.dynamiq.management_api') as mock_api:
+        runner.finalize(results, impl_config, tmp_path)
+
+    assert mock_api.call_count == 0
 
 
 # --- Runner snapshot ---
