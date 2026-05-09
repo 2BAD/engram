@@ -8,13 +8,13 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "anthropic>=0.83.0",
-    "httpx>=0.27.0",
-    "openai>=2.31.0",
-    "pyyaml>=6.0",
+    "anthropic>=0.100.0",
+    "httpx>=0.28.1",
+    "openai>=2.36.0",
+    "pyyaml>=6.0.3",
     "questionary>=2.1.1",
-    "rich>=14.3.3",
-    "typer>=0.24.0",
+    "rich>=15.0.0",
+    "typer>=0.25.1",
 ]
 
 [project.scripts]
@@ -29,11 +29,11 @@ module-root = ""
 
 [dependency-groups]
 dev = [
-    "poethepoet==0.40.0",
-    "pytest-cov==7.0.0",
-    "pytest==9.0.2",
-    "ruff==0.14.14",
-    "ty==0.0.13",
+    "poethepoet>=0.45.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.12",
+    "ty>=0.0.34",
 ]
 
 [tool.pytest.ini_options]
