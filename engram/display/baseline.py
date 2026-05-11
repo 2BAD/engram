@@ -48,7 +48,7 @@ def _pretty_ref(root: Path | None, experiment_id: str) -> str:
         return f'[dim]{experiment_id} (missing)[/dim]'
     try:
         metadata = json.loads(results_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return f'[dim]{experiment_id} (unreadable)[/dim]'
     decorate_with_short_ids([metadata], root)
     return linkify_ref(format_ref_long(metadata), root / 'experiments' / experiment_id)

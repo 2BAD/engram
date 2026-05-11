@@ -279,7 +279,7 @@ class DynamiqRunner(Runner):
                     'workflow_name': wf_data.get('name', ''),
                 },
             )
-        except (httpx.HTTPError, KeyError):
+        except httpx.HTTPError, KeyError:
             return _empty_snapshot(impl_config, impl_dir)
 
 

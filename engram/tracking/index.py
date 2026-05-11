@@ -146,7 +146,7 @@ def list_experiments(
             continue
         try:
             data = json.loads(results_file.read_text())
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             continue
         if impl is not None and data.get('implementation') != impl:
             continue
