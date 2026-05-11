@@ -78,6 +78,9 @@ runner_config:
   max_tokens: "1024"
   # temperature 0 keeps scoring reproducible across re-runs.
   temperature: "0"
+  # Cache the system prompt across runs, ~90% off on cache hits.
+  # Only worth turning on once the system prompt is past ~1024 tokens.
+  # prompt_cache: "true"
 
 config_management:
   mode: local
@@ -112,6 +115,9 @@ runner_config:
   model: gemini/gemini-2.5-flash
   max_tokens: "1024"
   temperature: "0"
+  # prompt_cache forwards to Anthropic when the model is `anthropic/...`.
+  # No-op for other providers; OpenAI auto-caches above ~1024 tokens anyway.
+  # prompt_cache: "true"
 
 config_management:
   mode: local

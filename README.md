@@ -45,6 +45,19 @@ Rename the implementations and dataset once you replace the example with your ow
 
 Custom runners can be added by implementing the `Runner` interface.
 
+## Prompt caching
+
+The `anthropic` and `litellm` runners take a `prompt_cache: "true"` flag in `runner_config`. On Anthropic this cuts repeated-prompt input cost by ~90% on cache hits (every run after the first, within a 5-minute window). Don't bother for short system prompts: caching only kicks in above ~1024 tokens (~4000 chars), and the first call pays a 25% creation premium you won't get back if no reads follow.
+
+```yaml
+runner_config:
+  api_key_env: ANTHROPIC_API_KEY
+  model: claude-sonnet-4-6
+  prompt_cache: "true"
+```
+
+OpenAI auto-caches prompts above 1024 tokens, no flag needed. `engram score` reports a `cache_hit_rate` when any caching activity shows up, and `engram compare` splits total cost into input / cache-read / cache-creation / output buckets so a regression shows up where it actually happened.
+
 ## Development
 
 ```sh
