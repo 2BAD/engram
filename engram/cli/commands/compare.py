@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import asdict
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -29,7 +29,7 @@ _NA_CELL = '[dim]—[/dim]'
 _METRICS = ('accuracy', 'precision', 'recall', 'f1')
 
 
-class CompareFormat(str, Enum):
+class CompareFormat(StrEnum):
     FIELDS = 'fields'
     SUMMARY = 'summary'
 
@@ -105,7 +105,7 @@ def _warn_cross_workflow(root: Path, from_id: str, to_id: str) -> None:
     try:
         wf_a, _ = lookup_experiment(root, from_id)
         wf_b, _ = lookup_experiment(root, to_id)
-    except (FileNotFoundError, OSError, KeyError):
+    except FileNotFoundError, OSError, KeyError:
         return
     if wf_a != wf_b:
         console.print(
