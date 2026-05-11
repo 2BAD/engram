@@ -7,9 +7,10 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import anthropic
+from anthropic.types import MessageParam
 
 from engram.cost.pricing import find_rate, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
@@ -60,7 +61,7 @@ class AnthropicApiRunner(Runner):
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
-                messages=[{'role': 'user', 'content': user_content}],
+                messages=[cast('MessageParam', {'role': 'user', 'content': user_content})],
             )
         except anthropic.APIError as e:
             latency = (time.monotonic() - start) * 1000
@@ -75,7 +76,7 @@ class AnthropicApiRunner(Runner):
         )
         cost_usd = self._compute_cost(model, usage)
 
-        raw_text = response.content[0].text if response.content else ''
+        raw_text = getattr(response.content[0], 'text', '') if response.content else ''
         output = _parse_json_output(raw_text)
 
         if output is None:

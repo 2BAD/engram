@@ -93,7 +93,7 @@ def _call_anthropic(model: str, system_prompt: str, user_message: str) -> Analys
         messages=[{'role': 'user', 'content': user_message}],
     )
 
-    text = response.content[0].text if response.content else ''
+    text = getattr(response.content[0], 'text', '') if response.content else ''
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
 

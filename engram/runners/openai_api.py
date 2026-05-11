@@ -7,9 +7,10 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import openai
+from openai.types.chat import ChatCompletionMessageParam
 
 from engram.cost.pricing import find_rate, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
@@ -63,7 +64,7 @@ class OpenAIApiRunner(Runner):
                 max_completion_tokens=max_tokens,
                 temperature=temperature,
                 response_format={'type': 'json_object'},
-                messages=messages,
+                messages=cast('list[ChatCompletionMessageParam]', messages),
             )
         except openai.APIError as e:
             latency = (time.monotonic() - start) * 1000
@@ -71,10 +72,11 @@ class OpenAIApiRunner(Runner):
 
         latency = (time.monotonic() - start) * 1000
 
+        u = response.usage
         usage = TokenUsage(
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens,
-            total_tokens=response.usage.total_tokens,
+            prompt_tokens=u.prompt_tokens if u else 0,
+            completion_tokens=u.completion_tokens if u else 0,
+            total_tokens=u.total_tokens if u else 0,
         )
         cost_usd = self._compute_cost(model, usage)
 

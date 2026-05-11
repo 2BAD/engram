@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from engram.config.sync import pull_config
@@ -40,8 +41,8 @@ def _make_dynamiq_config(**overrides: object) -> ImplementationConfig:
         workflow=str(defaults['workflow']),
         platform=str(defaults['platform']),
         runner=str(defaults['runner']),
-        runner_config=defaults.get('runner_config', {}),  # type: ignore[arg-type]
-        config_management=defaults.get('config_management', ConfigManagement()),  # type: ignore[arg-type]
+        runner_config=cast('dict[str, str]', defaults.get('runner_config', {})),
+        config_management=cast('ConfigManagement', defaults.get('config_management', ConfigManagement())),
     )
 
 
