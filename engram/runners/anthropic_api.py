@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import anthropic
 from anthropic.types import MessageParam, TextBlockParam
 
-from engram.cost.pricing import compute_cost, load_pricing
+from engram.cost.pricing import compute_cost_components, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -84,7 +84,8 @@ class AnthropicApiRunner(Runner):
             cache_read_tokens=cache_read,
             cache_creation_tokens=cache_creation,
         )
-        cost_usd = self._compute_cost(model, usage)
+        components = self._compute_cost_components(model, usage)
+        cost_usd = sum(components.values())
 
         raw_text = getattr(response.content[0], 'text', '') if response.content else ''
         output = _parse_json_output(raw_text)
@@ -96,6 +97,10 @@ class AnthropicApiRunner(Runner):
                 status='failed',
                 usage=usage,
                 cost_usd=cost_usd,
+                cost_input_usd=components['input_usd'],
+                cost_cache_read_usd=components['cache_read_usd'],
+                cost_cache_creation_usd=components['cache_creation_usd'],
+                cost_output_usd=components['output_usd'],
                 latency_ms=latency,
                 error=f'Failed to parse JSON from response: {raw_text[:200]}',
             )
@@ -106,14 +111,18 @@ class AnthropicApiRunner(Runner):
             status='succeeded',
             usage=usage,
             cost_usd=cost_usd,
+            cost_input_usd=components['input_usd'],
+            cost_cache_read_usd=components['cache_read_usd'],
+            cost_cache_creation_usd=components['cache_creation_usd'],
+            cost_output_usd=components['output_usd'],
             latency_ms=latency,
         )
 
-    def _compute_cost(self, model: str, usage: TokenUsage) -> float:
-        """Compute USD cost from token usage using cached LiteLLM pricing data."""
+    def _compute_cost_components(self, model: str, usage: TokenUsage) -> dict[str, float]:
+        """Per-bucket USD cost using cached LiteLLM pricing data."""
         if self._pricing is None:
             self._pricing = load_pricing()
-        return compute_cost(self._pricing, model, usage)
+        return compute_cost_components(self._pricing, model, usage)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""

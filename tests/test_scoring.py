@@ -637,6 +637,31 @@ def test_score_experiment(tmp_path: Path):
     assert report.labels_scored_at
 
 
+def test_score_experiment_cost_breakdown_sums_to_total(tmp_path: Path):
+    """When results carry per-bucket cost fields, EvalReport aggregates them per bucket and the sum equals total."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    # Each run carries a small breakdown; total is just the sum of the four components.
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['cost_input_usd'] = 0.002
+        r['cost_cache_read_usd'] = 0.001
+        r['cost_cache_creation_usd'] = 0.0005
+        r['cost_output_usd'] = 0.003
+        r['cost_usd'] = 0.0065  # = sum of the four
+    results_path.write_text(json.dumps(data))
+
+    report = score_experiment(tmp_path, experiment_id)
+    assert report.cost_input_usd == pytest.approx(0.006)
+    assert report.cost_cache_read_usd == pytest.approx(0.003)
+    assert report.cost_cache_creation_usd == pytest.approx(0.0015)
+    assert report.cost_output_usd == pytest.approx(0.009)
+    assert report.cost_total_usd == pytest.approx(
+        report.cost_input_usd + report.cost_cache_read_usd + report.cost_cache_creation_usd + report.cost_output_usd
+    )
+
+
 def test_score_experiment_cache_hit_rate(tmp_path: Path):
     """When results record cache_read_tokens, the report exposes the aggregate hit rate."""
     experiment_id = _setup_scored_project(tmp_path)

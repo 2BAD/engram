@@ -51,6 +51,13 @@ class EvalReport:
     cost_avg_usd: float = 0.0
     cost_median_usd: float = 0.0
     cost_p95_usd: float = 0.0
+    # Per-bucket cost totals across all successful runs. Sum equals cost_total_usd for runs
+    # scored after the breakdown was introduced; older runs have zeros here and the legacy
+    # cost_total_usd as the only authoritative value.
+    cost_input_usd: float = 0.0
+    cost_cache_read_usd: float = 0.0
+    cost_cache_creation_usd: float = 0.0
+    cost_output_usd: float = 0.0
     # Fraction of input tokens that hit a prompt cache across all successful runs.
     # None when no runs reported any cache activity (so the cost table can hide the row).
     cache_hit_rate: float | None = None

@@ -68,23 +68,27 @@ def find_cache_rates(pricing: dict[str, Any], model: str) -> tuple[float, float]
 
 
 def compute_cost(pricing: dict[str, Any], model: str, usage: TokenUsage) -> float:
-    """
-    Total billed cost for a single run.
+    """Total billed cost for a single run. Use compute_cost_components when you need the breakdown."""
+    return sum(compute_cost_components(pricing, model, usage).values())
 
-    Splits ``prompt_tokens`` into three buckets (non-cached input, cache reads,
-    cache creation) and prices each at its own rate. Output tokens at the
-    output rate. Safe with zero cache token counts (falls back to a plain
-    input * input_rate + output * output_rate sum).
+
+def compute_cost_components(pricing: dict[str, Any], model: str, usage: TokenUsage) -> dict[str, float]:
+    """
+    Per-bucket cost for a single run.
+
+    Splits ``prompt_tokens`` into three buckets (non-cached input, cache reads, cache creation)
+    and prices each at its own rate; output tokens at the output rate. The returned dict carries
+    one key per bucket, so callers can sum aggregates per component across many runs.
     """
     input_rate, output_rate = find_rate(pricing, model)
     creation_rate, read_rate = find_cache_rates(pricing, model)
     non_cached = max(0, usage.prompt_tokens - usage.cache_read_tokens - usage.cache_creation_tokens)
-    return (
-        non_cached * input_rate
-        + usage.cache_creation_tokens * creation_rate
-        + usage.cache_read_tokens * read_rate
-        + usage.completion_tokens * output_rate
-    )
+    return {
+        'input_usd': non_cached * input_rate,
+        'cache_creation_usd': usage.cache_creation_tokens * creation_rate,
+        'cache_read_usd': usage.cache_read_tokens * read_rate,
+        'output_usd': usage.completion_tokens * output_rate,
+    }
 
 
 def _find_model_data(pricing: dict[str, Any], model: str) -> dict[str, Any]:

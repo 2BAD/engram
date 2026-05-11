@@ -836,6 +836,42 @@ def test_compare_experiments(tmp_path: Path):
     assert result.regressions == ['topic']
 
 
+def test_compare_experiments_carries_cost_breakdown(tmp_path: Path):
+    """ComparisonResult.cost_a/cost_b expose per-bucket totals so compare can show component deltas."""
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+
+    # Stamp a breakdown onto experiment A's eval.json so compare reads it instead of re-scoring.
+    eval_path = tmp_path / 'experiments' / id_a / 'eval.json'
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    eval_path.write_text(
+        json.dumps(
+            {
+                'experiment_id': id_a,
+                'matched_examples': 1,
+                'field_metrics': [],
+                'confusion_matrices': [],
+                'cost_total_usd': 0.0065,
+                'cost_avg_usd': 0.0065,
+                'cost_median_usd': 0.0065,
+                'cost_p95_usd': 0.0065,
+                'cost_input_usd': 0.002,
+                'cost_cache_read_usd': 0.001,
+                'cost_cache_creation_usd': 0.0005,
+                'cost_output_usd': 0.003,
+            }
+        )
+    )
+
+    result = compare_experiments(tmp_path, id_a, id_b)
+    assert result.cost_a['input'] == pytest.approx(0.002)
+    assert result.cost_a['cache_read'] == pytest.approx(0.001)
+    assert result.cost_a['cache_creation'] == pytest.approx(0.0005)
+    assert result.cost_a['output'] == pytest.approx(0.003)
+    # B side wasn't pre-seeded; the cost dict still exposes all bucket keys, all zero.
+    assert result.cost_b['input'] == 0.0
+    assert result.cost_b['cache_read'] == 0.0
+
+
 @pytest.mark.usefixtures('rich_mode')
 def test_compare_command_prints_summary_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """engram compare defaults to a single aggregated table with metrics as columns."""
@@ -867,6 +903,52 @@ def test_compare_command_prints_summary_table(tmp_path: Path, monkeypatch: pytes
     assert 'classify-api/test-ds' in result.output
     assert id_a not in result.output
     assert id_b not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_shows_cost_breakdown_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When experiments record per-bucket cost, the cost-comparison table breaks total down by component."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    # Seed eval.json for both sides with a breakdown so compare reads it rather than re-scoring.
+    for exp_id, total, cache_read, cache_creation in (
+        (id_a, 0.04068, 0.0, 0.0395),
+        (id_b, 0.00463, 0.00325, 0.00049),
+    ):
+        eval_path = tmp_path / 'experiments' / exp_id / 'eval.json'
+        eval_path.write_text(
+            json.dumps(
+                {
+                    'experiment_id': exp_id,
+                    'matched_examples': 1,
+                    'field_metrics': [],
+                    'confusion_matrices': [],
+                    'cost_total_usd': total,
+                    'cost_avg_usd': total,
+                    'cost_median_usd': total,
+                    'cost_p95_usd': total,
+                    'cost_input_usd': 0.0,
+                    'cost_cache_read_usd': cache_read,
+                    'cost_cache_creation_usd': cache_creation,
+                    'cost_output_usd': total - cache_read - cache_creation,
+                }
+            )
+        )
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'Cost Comparison' in result.output
+    # All four bucket rows should render since both sides have non-zero components somewhere.
+    assert 'cache creation' in result.output
+    assert 'cache read' in result.output
+    assert 'output' in result.output
+    # Delta column header + at least one signed dollar value.
+    assert 'Delta' in result.output
 
 
 @pytest.mark.usefixtures('rich_mode')

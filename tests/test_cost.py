@@ -9,7 +9,13 @@ from typer.testing import CliRunner
 
 from engram.cli import app
 from engram.cost.estimator import _rough_token_count, estimate_cost
-from engram.cost.pricing import _apply_overrides, compute_cost, find_cache_rates, find_rate
+from engram.cost.pricing import (
+    _apply_overrides,
+    compute_cost,
+    compute_cost_components,
+    find_cache_rates,
+    find_rate,
+)
 from engram.models.run import TokenUsage
 
 # --- Pricing ---
@@ -151,6 +157,21 @@ def test_compute_cost_cache_savings_are_significant():
 def test_compute_cost_unknown_model_zero():
     usage = TokenUsage(prompt_tokens=100, completion_tokens=50, cache_read_tokens=10)
     assert compute_cost({}, 'unknown', usage) == 0.0
+
+
+def test_compute_cost_components_sums_to_total():
+    """compute_cost_components returns a dict whose values sum to the scalar compute_cost result."""
+    usage = TokenUsage(
+        prompt_tokens=1000, completion_tokens=200, total_tokens=1200, cache_read_tokens=600, cache_creation_tokens=100
+    )
+    components = compute_cost_components(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    assert set(components.keys()) == {'input_usd', 'cache_creation_usd', 'cache_read_usd', 'output_usd'}
+    total = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    assert sum(components.values()) == pytest.approx(total)
+    # Spot-check: 300 non-cached input * 3e-6 = 9e-4
+    assert components['input_usd'] == pytest.approx(300 * 3e-6)
+    # 600 cache reads * 3e-7 = 1.8e-4
+    assert components['cache_read_usd'] == pytest.approx(600 * 3e-7)
 
 
 # --- Token counting ---

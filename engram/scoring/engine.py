@@ -40,6 +40,10 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         cost_avg_usd=raw.get('cost_avg_usd', 0.0),
         cost_median_usd=raw.get('cost_median_usd', 0.0),
         cost_p95_usd=raw.get('cost_p95_usd', 0.0),
+        cost_input_usd=raw.get('cost_input_usd', 0.0),
+        cost_cache_read_usd=raw.get('cost_cache_read_usd', 0.0),
+        cost_cache_creation_usd=raw.get('cost_cache_creation_usd', 0.0),
+        cost_output_usd=raw.get('cost_output_usd', 0.0),
         cache_hit_rate=raw.get('cache_hit_rate'),
         labels_hash=raw.get('labels_hash', ''),
         labels_count=raw.get('labels_count', 0),
@@ -99,6 +103,10 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
 
     successful = [r for r in results if r.status == 'succeeded']
     cache_hit_rate = _compute_cache_hit_rate(successful)
+    cost_input = sum(r.cost_input_usd for r in successful)
+    cost_cache_read = sum(r.cost_cache_read_usd for r in successful)
+    cost_cache_creation = sum(r.cost_cache_creation_usd for r in successful)
+    cost_output = sum(r.cost_output_usd for r in successful)
 
     return EvalReport(
         experiment_id=experiment_id,
@@ -109,6 +117,10 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
         cost_avg_usd=cost_avg,
         cost_median_usd=cost_median,
         cost_p95_usd=cost_p95,
+        cost_input_usd=cost_input,
+        cost_cache_read_usd=cost_cache_read,
+        cost_cache_creation_usd=cost_cache_creation,
+        cost_output_usd=cost_output,
         cache_hit_rate=cache_hit_rate,
         labels_hash=compute_labels_hash(labels),
         labels_count=len(labels),

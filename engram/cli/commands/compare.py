@@ -191,14 +191,7 @@ def _render_comparison(
         for delta in result.field_deltas.values():
             _print_field_table(delta, from_short, to_short)
 
-    cost_table = Table(title='Cost Comparison')
-    cost_table.add_column(Text('Metric', justify='center'), style='bold')
-    cost_table.add_column(Text(from_short, justify='center'), justify='right')
-    cost_table.add_column(Text(to_short, justify='center'), justify='right')
-    cost_table.add_row('Total', f'${result.cost_a.get("total", 0):.4f}', f'${result.cost_b.get("total", 0):.4f}')
-    cost_table.add_row('Average', f'${result.cost_a.get("avg", 0):.4f}', f'${result.cost_b.get("avg", 0):.4f}')
-    console.print(cost_table)
-    console.print()
+    _print_cost_comparison(result, from_short, to_short)
 
     if diff_lines:
         console.print('[bold]Config Changes:[/bold]')
@@ -208,6 +201,48 @@ def _render_comparison(
 
     if result.regressions:
         console.print(f'[red bold]Regressions detected:[/red bold] {", ".join(result.regressions)}')
+
+
+def _print_cost_comparison(result: ComparisonResult, from_short: str, to_short: str) -> None:
+    """Cost comparison with a per-bucket breakdown row when either side has non-zero cache/input/output components."""
+    cost_table = Table(title='Cost Comparison')
+    cost_table.add_column(Text('Metric', justify='center'), style='bold')
+    cost_table.add_column(Text(from_short, justify='center'), justify='right')
+    cost_table.add_column(Text(to_short, justify='center'), justify='right')
+    cost_table.add_column(Text('Delta', justify='center'), justify='right')
+
+    a, b = result.cost_a, result.cost_b
+    cost_table.add_row('Total', _money(a.get('total', 0)), _money(b.get('total', 0)), _money_delta(a, b, 'total'))
+    cost_table.add_row('Average', _money(a.get('avg', 0)), _money(b.get('avg', 0)), _money_delta(a, b, 'avg'))
+
+    # Breakdown rows only appear when at least one side recorded the bucket — older runs
+    # without the breakdown carry zeros and would otherwise produce four uninformative rows.
+    for label, key in (
+        ('  ├ input', 'input'),
+        ('  ├ cache creation', 'cache_creation'),
+        ('  ├ cache read', 'cache_read'),
+        ('  └ output', 'output'),
+    ):
+        if a.get(key, 0) or b.get(key, 0):
+            cost_table.add_row(label, _money(a.get(key, 0)), _money(b.get(key, 0)), _money_delta(a, b, key))
+
+    console.print(cost_table)
+    console.print()
+
+
+def _money(value: float) -> str:
+    return f'${value:.4f}'
+
+
+def _money_delta(a: dict[str, float], b: dict[str, float], key: str) -> str:
+    """Signed delta string, colored red when the change is a cost increase (>0)."""
+    delta = b.get(key, 0) - a.get(key, 0)
+    if delta == 0:
+        return _money(0)
+    sign = '+' if delta > 0 else '-'
+    text = f'{sign}${abs(delta):.4f}'
+    color = 'red' if delta > 0 else 'green'
+    return f'[{color}]{text}[/{color}]'
 
 
 def compare_command(  # noqa: PLR0913 — CLI options map 1:1 to flags

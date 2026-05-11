@@ -32,6 +32,12 @@ class RunResult:
     status: Literal['succeeded', 'failed', 'timeout'] = 'succeeded'
     usage: TokenUsage = field(default_factory=TokenUsage)
     cost_usd: float = 0.0
+    # Per-bucket breakdown of cost_usd. Sum equals cost_usd for runs scored after this was added;
+    # older runs may have zeros here while cost_usd carries the legacy total.
+    cost_input_usd: float = 0.0
+    cost_cache_read_usd: float = 0.0
+    cost_cache_creation_usd: float = 0.0
+    cost_output_usd: float = 0.0
     latency_ms: float = 0.0
     error: str = ''
     trace_id: str = ''

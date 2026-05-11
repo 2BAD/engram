@@ -114,12 +114,24 @@ def compare_experiments(
         experiment_a=id_a,
         experiment_b=id_b,
         field_deltas=field_deltas,
-        cost_a={'total': report_a.cost_total_usd, 'avg': report_a.cost_avg_usd},
-        cost_b={'total': report_b.cost_total_usd, 'avg': report_b.cost_avg_usd},
+        cost_a=_cost_dict(report_a),
+        cost_b=_cost_dict(report_b),
         labels_a=_labels_meta(report_a),
         labels_b=_labels_meta(report_b),
         regressions=regressions,
     )
+
+
+def _cost_dict(report: EvalReport) -> dict[str, float]:
+    """Flatten the cost fields of a report into the per-bucket dict consumed by display."""
+    return {
+        'total': report.cost_total_usd,
+        'avg': report.cost_avg_usd,
+        'input': report.cost_input_usd,
+        'cache_read': report.cost_cache_read_usd,
+        'cache_creation': report.cost_cache_creation_usd,
+        'output': report.cost_output_usd,
+    }
 
 
 def _labels_meta(report: EvalReport) -> dict[str, object]:
