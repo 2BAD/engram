@@ -117,6 +117,19 @@ def _print_cost_table(report: EvalReport) -> None:
     table.add_row('Average', f'${report.cost_avg_usd:.4f}')
     table.add_row('Median', f'${report.cost_median_usd:.4f}')
     table.add_row('P95', f'${report.cost_p95_usd:.4f}')
+
+    # Bucket rows only render when the runner actually populated them — older runs
+    # (or non-API runners) carry zeros across all four and would produce noise rows.
+    buckets = (
+        ('  ├ input', report.cost_input_usd),
+        ('  ├ cache creation', report.cost_cache_creation_usd),
+        ('  ├ cache read', report.cost_cache_read_usd),
+        ('  └ output', report.cost_output_usd),
+    )
+    if any(amount > 0 for _, amount in buckets):
+        for label, amount in buckets:
+            table.add_row(label, f'${amount:.4f}')
+
     if report.cache_hit_rate is not None:
         table.add_row('Cache hit rate', f'{report.cache_hit_rate:.1%}')
 

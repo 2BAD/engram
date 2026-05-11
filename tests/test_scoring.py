@@ -880,6 +880,48 @@ def test_score_experiment_single_repeat_omits_agreement_metrics(tmp_path: Path):
     assert topic.accuracy_stdev is None
 
 
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_renders_cost_breakdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When results carry per-bucket cost, the rich Cost table includes the four-row breakdown."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    # Stamp a breakdown onto each run so the score engine aggregates non-zero buckets.
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['cost_input_usd'] = 0.002
+        r['cost_cache_read_usd'] = 0.001
+        r['cost_cache_creation_usd'] = 0.0005
+        r['cost_output_usd'] = 0.003
+        r['cost_usd'] = 0.0065
+    results_path.write_text(json.dumps(data))
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'Cost' in result.output
+    assert 'cache creation' in result.output
+    assert 'cache read' in result.output
+    assert 'input' in result.output
+    assert 'output' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_hides_cost_breakdown_when_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Runs without per-bucket cost data show only the legacy total/avg/median/p95 rows."""
+    experiment_id = _setup_scored_project(tmp_path)  # default results have no breakdown fields
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'Cost' in result.output
+    # No bucket rows because the runner-side breakdown wasn't recorded.
+    assert 'cache creation' not in result.output
+    assert 'cache read' not in result.output
+
+
 def test_score_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """With --json, score emits an EvalReport as structured JSON."""
     experiment_id = _setup_scored_project(tmp_path)
