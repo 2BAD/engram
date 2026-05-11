@@ -193,6 +193,43 @@ def test_append_to_index_omits_labels_hash_when_absent(tmp_path: Path):
     assert 'labels_hash' not in read_index(tmp_path)[0]
 
 
+def test_append_to_index_persists_cache_stats(tmp_path: Path):
+    """Index row exposes cache_hit_rate and average cache token counts when caching activity is recorded."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-cache', 'classify-api', 'test-ds', 'A')
+    # Augment the result row with cache token fields so append_to_index sees them.
+    results_path = tmp_path / 'experiments' / 'exp-cache' / 'results.json'
+    data = json.loads(results_path.read_text())
+    data['results'][0]['usage'] = {
+        'prompt_tokens': 1000,
+        'completion_tokens': 50,
+        'total_tokens': 1050,
+        'cache_read_tokens': 800,
+        'cache_creation_tokens': 100,
+    }
+    results_path.write_text(json.dumps(data))
+
+    report = EvalReport(experiment_id='exp-cache', field_metrics=[], cache_hit_rate=0.8)
+    append_to_index(tmp_path, report)
+
+    entry = read_index(tmp_path)[0]
+    assert entry['cost']['cache_hit_rate'] == 0.8
+    assert entry['avg_cache_read_tokens'] == 800
+    assert entry['avg_cache_creation_tokens'] == 100
+
+
+def test_append_to_index_omits_cache_fields_when_unused(tmp_path: Path):
+    """Non-caching runs keep the index schema clean — no cache fields are emitted."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-nocache', 'classify-api', 'test-ds', 'A')
+
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-nocache', field_metrics=[]))
+    entry = read_index(tmp_path)[0]
+    assert 'cache_hit_rate' not in entry['cost']
+    assert 'avg_cache_read_tokens' not in entry
+    assert 'avg_cache_creation_tokens' not in entry
+
+
 # --- resolve_experiment_id ---
 
 

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from engram.eval.results import load_results
 
 if TYPE_CHECKING:
+    from engram.models.run import RunResult
     from engram.models.scoring import EvalReport
 
 _AT_PATTERN = re.compile(r'^@(?:~(\d+))?$')
@@ -54,6 +55,8 @@ def append_to_index(root: Path, report: EvalReport) -> None:
             'avg_usd': round(report.cost_avg_usd, 4),
         },
     }
+
+    _attach_cache_stats(summary, report, results)
 
     # Fingerprint of the labels this experiment was scored against. Lets
     # `engram experiments list` flag rows whose stored hash no longer matches
@@ -108,6 +111,24 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         for entry in existing:
             tmp.write(json.dumps(entry) + '\n')
     Path(tmp.name).replace(index_path)
+
+
+def _attach_cache_stats(summary: dict[str, Any], report: EvalReport, results: list[RunResult]) -> None:
+    """
+    Fold cache_hit_rate and average cache token counts into a summary row.
+
+    Omitted entirely when no caching activity was recorded so the schema stays clean for runs
+    without prompt caching. The averages feed the estimator's cache-aware projection on subsequent
+    runs of the same implementation.
+    """
+    if report.cache_hit_rate is not None:
+        summary['cost']['cache_hit_rate'] = round(report.cache_hit_rate, 4)
+    cache_read = [r.usage.cache_read_tokens for r in results if r.usage.cache_read_tokens > 0]
+    cache_creation = [r.usage.cache_creation_tokens for r in results if r.usage.cache_creation_tokens > 0]
+    if cache_read:
+        summary['avg_cache_read_tokens'] = round(sum(cache_read) / len(cache_read))
+    if cache_creation:
+        summary['avg_cache_creation_tokens'] = round(sum(cache_creation) / len(cache_creation))
 
 
 def read_index(root: Path) -> list[dict[str, Any]]:

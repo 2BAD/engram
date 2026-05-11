@@ -6,11 +6,16 @@ from pathlib import Path
 from typing import Any
 
 from engram.config.loader import load_implementation, load_project
-from engram.cost.pricing import find_rate, load_pricing
+from engram.cost.pricing import find_cache_rates, find_rate, load_pricing
 from engram.datasets.loader import load_dataset_inputs
 from engram.tracking.index import read_index
 
 DEFAULT_OUTPUT_TOKENS = 500
+# Below this threshold Anthropic silently ignores cache_control markers and OpenAI's auto-cache doesn't
+# activate, so the estimator projects no cache savings even when prompt_cache is on. (Anthropic Haiku
+# actually needs 2048 tokens; we use the lower Sonnet/Opus number conservatively here, accepting that
+# Haiku users may see slightly inflated savings in the estimate.)
+_MIN_CACHEABLE_TOKENS = 1024
 
 
 def estimate_cost(
@@ -32,6 +37,7 @@ def estimate_cost(
 
     model = impl_config.runner_config.get('model', '')
     input_rate, output_rate = find_rate(pricing, model)
+    cache_creation_rate, cache_read_rate = find_cache_rates(pricing, model)
 
     # Load prompt tokens (fixed cost per run)
     prompt_tokens = _count_prompt_tokens(impl_dir)
@@ -42,31 +48,49 @@ def estimate_cost(
     # Estimate output tokens from historical data or default
     avg_output_tokens = _estimate_output_tokens(root, implementation_name, dataset_name)
 
-    # Estimate per-example cost
+    text_inputs = [inp for inp in inputs if not inp.is_binary]
+    prompt_cache_on = _truthy(impl_config.runner_config.get('prompt_cache'))
+    cache_active = prompt_cache_on and prompt_tokens >= _MIN_CACHEABLE_TOKENS and len(text_inputs) > 1
+
+    first_template_rate = cache_creation_rate if cache_active else input_rate
+    rest_template_rate = cache_read_rate if cache_active else input_rate
+
+    # Estimate per-example cost. With prompt caching active, the first call pays the
+    # creation premium on the system prompt and every subsequent call reads from the
+    # cache; the per-example numbers below show the steady-state (warm cache) cost.
     examples = []
-    total_cost = 0.0
-    has_binary = False
-    for inp in inputs:
-        if inp.is_binary:
-            has_binary = True
-            continue
-        input_tokens = prompt_tokens + _rough_token_count(inp.text or inp.text_for_display)
-        example_cost = (input_tokens * input_rate) + (avg_output_tokens * output_rate)
-        total_cost += example_cost
+    total_template_cost = 0.0
+    total_variable_cost = 0.0
+    for idx, inp in enumerate(text_inputs):
+        variable_tokens = _rough_token_count(inp.text or inp.text_for_display)
+        template_rate = first_template_rate if idx == 0 else rest_template_rate
+        template_cost = prompt_tokens * template_rate
+        variable_cost = variable_tokens * input_rate + avg_output_tokens * output_rate
+        total_template_cost += template_cost
+        total_variable_cost += variable_cost
         examples.append(
             {
                 'input_file': inp.filename,
-                'estimated_input_tokens': input_tokens,
+                'estimated_input_tokens': prompt_tokens + variable_tokens,
                 'estimated_output_tokens': avg_output_tokens,
-                'estimated_cost_usd': round(example_cost, 6),
+                'estimated_cost_usd': round(template_cost + variable_cost, 6),
             }
         )
 
-    warnings: list[str] = []
-    if has_binary:
-        warnings.append('Dataset contains binary inputs (images/PDFs) whose token cost cannot be reliably estimated.')
+    total_cost = total_template_cost + total_variable_cost
 
-    return {
+    warnings: list[str] = []
+    if any(inp.is_binary for inp in inputs):
+        warnings.append('Dataset contains binary inputs (images/PDFs) whose token cost cannot be reliably estimated.')
+    if prompt_cache_on and not cache_active:
+        reason = (
+            f'system prompt is below the {_MIN_CACHEABLE_TOKENS}-token minimum'
+            if prompt_tokens < _MIN_CACHEABLE_TOKENS
+            else 'fewer than 2 text examples in the dataset'
+        )
+        warnings.append(f'prompt_cache is enabled but no savings projected: {reason}.')
+
+    result: dict[str, Any] = {
         'implementation': implementation_name,
         'dataset': dataset_name,
         'model': model,
@@ -79,6 +103,17 @@ def estimate_cost(
         'warnings': warnings,
         'examples': examples,
     }
+    if cache_active:
+        # Cost the same dataset would have run *without* the cache flag, so users can see the
+        # estimated savings up front. Only emitted when caching is actually projected to activate.
+        uncached_template = prompt_tokens * input_rate * len(text_inputs)
+        result['estimated_cost_without_cache_usd'] = round(uncached_template + total_variable_cost, 4)
+    return result
+
+
+def _truthy(value: object) -> bool:
+    """YAML-style truthiness for runner_config booleans."""
+    return isinstance(value, str) and value.strip().lower() in {'true', '1', 'yes', 'on'}
 
 
 def _count_prompt_tokens(impl_dir: Path) -> int:

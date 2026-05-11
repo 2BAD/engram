@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import anthropic
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, TextBlockParam
 
 from engram.cost.pricing import compute_cost, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
@@ -48,8 +48,10 @@ class AnthropicApiRunner(Runner):
         model = rc['model']
         max_tokens = int(rc.get('max_tokens', '4096'))
         temperature = float(rc.get('temperature', '0'))
+        prompt_cache = _truthy(rc.get('prompt_cache'))
 
         system_prompt = _load_system_prompt(impl_dir)
+        system_param = _system_param(system_prompt, prompt_cache)
         user_content = _build_anthropic_content(input_data)
 
         client = anthropic.Anthropic(api_key=api_key, max_retries=5)
@@ -60,7 +62,7 @@ class AnthropicApiRunner(Runner):
                 model=model,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                system=system_prompt,
+                system=system_param,
                 messages=[cast('MessageParam', {'role': 'user', 'content': user_content})],
             )
         except anthropic.APIError as e:
@@ -135,6 +137,28 @@ class AnthropicApiRunner(Runner):
 def _as_int(value: object) -> int:
     """Coerce SDK-reported numeric fields to int; treat anything else (None, MagicMock, ...) as 0."""
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _truthy(value: object) -> bool:
+    """YAML-style truthiness check for string-valued runner_config booleans."""
+    return isinstance(value, str) and value.strip().lower() in {'true', '1', 'yes', 'on'}
+
+
+def _system_param(system_prompt: str, prompt_cache: bool) -> str | list[TextBlockParam]:
+    """
+    Build the value for `messages.create(system=...)`.
+
+    Returns a plain string by default and a cache-marked content-block list when prompt_cache is on.
+    Anthropic only caches blocks above ~1024 tokens (Sonnet/Opus) or ~2048 (Haiku); below that, the
+    cache_control marker is silently ignored. The 25% cache-creation premium is only paid when caching
+    actually activates, so enabling the flag on short prompts is harmless aside from a slightly more
+    verbose API call.
+    """
+    if not system_prompt:
+        return ''
+    if prompt_cache:
+        return [cast('TextBlockParam', {'type': 'text', 'text': system_prompt, 'cache_control': {'type': 'ephemeral'}})]
+    return system_prompt
 
 
 def _build_anthropic_content(input_data: InputData) -> str | list[dict[str, Any]]:

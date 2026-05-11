@@ -45,6 +45,7 @@ class LiteLLMRunner(Runner):
         model = rc['model']
         max_tokens = int(rc.get('max_tokens', '4096'))
         temperature = float(rc.get('temperature', '0'))
+        prompt_cache = _truthy(rc.get('prompt_cache'))
 
         api_key: str | None = None
         env_var = rc.get('api_key_env')
@@ -57,7 +58,7 @@ class LiteLLMRunner(Runner):
         system_prompt = _load_system_prompt(impl_dir)
         messages: list[dict[str, Any]] = []
         if system_prompt:
-            messages.append({'role': 'system', 'content': system_prompt})
+            messages.append(_system_message(system_prompt, prompt_cache))
         messages.append({'role': 'user', 'content': _build_content(input_data)})
 
         completion_kwargs: dict[str, Any] = {
@@ -151,6 +152,28 @@ class LiteLLMRunner(Runner):
 def _as_int(value: object) -> int:
     """Coerce SDK-reported numeric fields to int; treat anything else (None, MagicMock, ...) as 0."""
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _truthy(value: object) -> bool:
+    """YAML-style truthiness check for string-valued runner_config booleans."""
+    return isinstance(value, str) and value.strip().lower() in {'true', '1', 'yes', 'on'}
+
+
+def _system_message(system_prompt: str, prompt_cache: bool) -> dict[str, Any]:
+    """
+    Build the system message.
+
+    Wraps the content in a cache-marked block list when prompt_cache is on. LiteLLM forwards
+    ``cache_control`` blocks to Anthropic; non-Anthropic providers ignore the marker (with
+    drop_params=True any unsupported field is stripped silently), so the flag is a no-op on
+    OpenAI, Gemini, etc.
+    """
+    if prompt_cache:
+        return {
+            'role': 'system',
+            'content': [{'type': 'text', 'text': system_prompt, 'cache_control': {'type': 'ephemeral'}}],
+        }
+    return {'role': 'system', 'content': system_prompt}
 
 
 def _build_content(input_data: InputData) -> str | list[dict[str, Any]]:

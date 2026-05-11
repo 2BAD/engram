@@ -281,6 +281,84 @@ def test_estimate_uses_historical_calibration(tmp_path: Path):
     assert result['examples'][0]['estimated_output_tokens'] == 200
 
 
+def _setup_cache_estimator_project(tmp_path: Path) -> None:
+    """Estimator project with a large enough system prompt to trigger cache projection (>=1024 tokens)."""
+    (tmp_path / 'engram.yaml').write_text('name: test\n')
+
+    wf_dir = tmp_path / 'workflows' / 'classify'
+    wf_dir.mkdir(parents=True)
+    (wf_dir / 'workflow.yaml').write_text('name: classify\noutput:\n  fields:\n    topic:\n      type: enum\n')
+
+    impl_dir = tmp_path / 'implementations' / 'classify-api'
+    impl_dir.mkdir(parents=True)
+    (impl_dir / 'implementation.yaml').write_text(
+        'workflow: classify\nplatform: api\nrunner: anthropic\n'
+        'runner_config:\n'
+        '  model: claude-sonnet-4-5-20250514\n'
+        '  api_key_env: KEY\n'
+        '  prompt_cache: "true"\n'
+    )
+    prompts_dir = impl_dir / 'prompts'
+    prompts_dir.mkdir()
+    # ~5000 chars / 4 ≈ 1250 tokens, comfortably above the 1024-token cache threshold.
+    (prompts_dir / 'system.md').write_text('x' * 5000)
+
+    ds_dir = tmp_path / 'datasets' / 'test-ds'
+    ds_dir.mkdir(parents=True)
+    (ds_dir / 'dataset.yaml').write_text('name: test-ds\n')
+    inputs_dir = ds_dir / 'inputs'
+    inputs_dir.mkdir()
+    (inputs_dir / '001.txt').write_text('short')
+    (inputs_dir / '002.txt').write_text('short')
+    (inputs_dir / '003.txt').write_text('short')
+
+    (tmp_path / 'experiments').mkdir()
+
+
+_CACHE_ESTIMATOR_PRICING = {
+    'claude-sonnet-4-5-20250514': {
+        'input_cost_per_token': 0.000003,
+        'output_cost_per_token': 0.000015,
+        'cache_creation_input_token_cost': 0.00000375,
+        'cache_read_input_token_cost': 0.0000003,
+    }
+}
+
+
+def test_estimate_projects_cache_savings(tmp_path: Path):
+    """With prompt_cache enabled and a 1024+ token prompt, cache projection lowers the total."""
+    _setup_cache_estimator_project(tmp_path)
+
+    with patch('engram.cost.estimator.load_pricing', return_value=_CACHE_ESTIMATOR_PRICING):
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    # Cached total must be lower than the uncached comparison value the estimator emits.
+    assert 'estimated_cost_without_cache_usd' in result
+    assert result['total_estimated_cost_usd'] < result['estimated_cost_without_cache_usd']
+    # The estimator must apply cache rates to the template tokens (read rate ≈ 10% of input rate),
+    # so 2 of 3 runs hit the cache. Output-token cost is unaffected and dilutes the ratio.
+    template_uncached = 1250 * 0.000003 * 3
+    template_cached = 1250 * 0.00000375 + 1250 * 0.0000003 * 2
+    expected_savings = template_uncached - template_cached
+    actual_savings = result['estimated_cost_without_cache_usd'] - result['total_estimated_cost_usd']
+    assert actual_savings == pytest.approx(expected_savings, rel=0.1)
+
+
+def test_estimate_skips_cache_projection_below_threshold(tmp_path: Path):
+    """A prompt under 1024 tokens leaves caching off in the estimate and warns the user."""
+    _setup_estimator_project(tmp_path)  # short prompt, well below 1024 tokens
+
+    # Override the impl to enable the flag.
+    impl_yaml = tmp_path / 'implementations' / 'classify-api' / 'implementation.yaml'
+    impl_yaml.write_text(impl_yaml.read_text().rstrip() + '\n  prompt_cache: "true"\n')
+
+    with patch('engram.cost.estimator.load_pricing', return_value=_CACHE_ESTIMATOR_PRICING):
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    assert 'estimated_cost_without_cache_usd' not in result
+    assert any('prompt_cache is enabled but no savings projected' in w for w in result['warnings'])
+
+
 def test_estimate_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """With --json, estimate emits the full structured cost breakdown."""
     _setup_estimator_project(tmp_path)

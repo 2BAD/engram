@@ -99,6 +99,66 @@ _FAKE_PRICING = {
 }
 
 
+def test_api_runner_prompt_cache_flag_sends_cache_control(tmp_path: Path):
+    """With prompt_cache=true the system prompt is sent as a cache-marked block."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('long stable system prompt')
+
+    impl_config = _make_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'claude-sonnet-4-5-20250514',
+            'max_tokens': '4096',
+            'prompt_cache': 'true',
+        },
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['system'] == [
+            {
+                'type': 'text',
+                'text': 'long stable system prompt',
+                'cache_control': {'type': 'ephemeral'},
+            },
+        ]
+
+
+def test_api_runner_prompt_cache_off_sends_plain_string(tmp_path: Path):
+    """Without the flag the system prompt is still passed as a plain string (no behavior change)."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()  # no prompt_cache in runner_config
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['system'] == 'prompt'
+
+
 def test_api_runner_extracts_cache_tokens_and_prices_them(tmp_path: Path):
     """Anthropic reports cache_creation + cache_read additively; runner normalizes and the cost helper prices them."""
     (tmp_path / 'prompts').mkdir()
@@ -971,6 +1031,41 @@ def test_litellm_runner_without_api_key_env(tmp_path: Path):
         assert 'api_key' not in mock_completion.call_args.kwargs
 
     assert result.status == 'succeeded'
+
+
+def test_litellm_runner_prompt_cache_flag_wraps_system_in_cache_block(tmp_path: Path):
+    """With prompt_cache=true the system message is sent as a content-block list with cache_control."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('long stable system prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'anthropic/claude-sonnet-4-5-20250514',
+            'max_tokens': '4096',
+            'prompt_cache': 'true',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        messages = mock_completion.call_args.kwargs['messages']
+        assert messages[0] == {
+            'role': 'system',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': 'long stable system prompt',
+                    'cache_control': {'type': 'ephemeral'},
+                },
+            ],
+        }
 
 
 def test_litellm_runner_extracts_cached_tokens(tmp_path: Path):
