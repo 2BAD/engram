@@ -55,7 +55,12 @@ def ask_experiment(root: Path, limit: int = 100) -> str:
         label = f'{ref}  {when}  {acc_str}'.rstrip()
         choices.append(Choice(title=label, value=entry.get('experiment_id', entry.get('id', ''))))
 
-    return questionary.select('Select experiment:', choices=choices).unsafe_ask()
+    return questionary.select(
+        'Select experiment (type to filter):',
+        choices=choices,
+        use_search_filter=True,
+        use_jk_keys=False,
+    ).unsafe_ask()
 
 
 _PAIR_SIZE = 2
@@ -81,9 +86,11 @@ def ask_experiment_pair(root: Path, limit: int = 100) -> tuple[str, str]:
         choices.append(Choice(title=label, value=entry))
 
     selected = questionary.checkbox(
-        'Select two experiments to compare:',
+        'Select two experiments to compare (type to filter):',
         choices=choices,
         validate=lambda sel: len(sel) == _PAIR_SIZE or 'Select exactly 2 experiments',
+        use_search_filter=True,
+        use_jk_keys=False,
     ).unsafe_ask()
 
     selected.sort(key=lambda e: e.get('timestamp', ''))
