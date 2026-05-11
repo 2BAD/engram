@@ -33,10 +33,11 @@ experiments/experiments.jsonl merge=union
 """
 
 _ENV_EXAMPLE = """\
-# Copy this file to `.env` and fill in your keys. Engram loads `.env` from the
-# project root on every command, so exports aren't needed once this is in place.
+# Copy to `.env` and fill in your keys. Engram loads `.env` from the project
+# root on every command, so you don't need to export these.
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+GEMINI_API_KEY=
 """
 
 _WORKFLOW_YAML = """\
@@ -52,11 +53,11 @@ output:
     topic:
       type: enum
       values: [billing, technical, feedback]
-      description: Primary subject of the conversation
+      description: What the conversation is about
     sentiment:
       type: enum
       values: [positive, negative, neutral]
-      description: Overall customer tone
+      description: Customer tone
 
 scorers:
   topic: exact_match
@@ -75,7 +76,7 @@ runner_config:
   api_key_env: ANTHROPIC_API_KEY
   model: claude-sonnet-4-6
   max_tokens: "1024"
-  # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
+  # temperature 0 keeps scoring reproducible across re-runs.
   temperature: "0"
 
 config_management:
@@ -91,7 +92,25 @@ runner_config:
   api_key_env: OPENAI_API_KEY
   model: gpt-5.4-mini
   max_tokens: "1024"
-  # temperature 0 keeps scoring reproducible across re-runs; raise it for creative tasks.
+  # temperature 0 keeps scoring reproducible across re-runs.
+  temperature: "0"
+
+config_management:
+  mode: local
+"""
+
+_LITELLM_IMPL_YAML = """\
+workflow: classify
+platform: api
+runner: litellm
+
+# Provider comes from the model prefix: `gemini/`, `openai/`, `anthropic/`,
+# `bedrock/`, `groq/`, `ollama/`, `vertex_ai/`, etc. Swap the model line to
+# try another provider.
+runner_config:
+  api_key_env: GEMINI_API_KEY
+  model: gemini/gemini-2.5-flash
+  max_tokens: "1024"
   temperature: "0"
 
 config_management:
@@ -145,13 +164,15 @@ _TEMPLATES: dict[str, str] = {
     '.gitattributes': _GITATTRIBUTES,
     '.env.example': _ENV_EXAMPLE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
-    # Two implementations of the same workflow so the project is ready for a
-    # cross-platform comparison out of the box. Prompts are identical in both
-    # so users can diverge them independently once they start iterating.
+    # Three implementations of the same workflow so the project is ready for
+    # cross-platform comparison out of the box. Prompts are identical in all
+    # three so users can diverge them independently once they start iterating.
     'implementations/classify-anthropic/implementation.yaml': _ANTHROPIC_IMPL_YAML,
     'implementations/classify-anthropic/prompts/system.md': _SYSTEM_PROMPT,
     'implementations/classify-openai/implementation.yaml': _OPENAI_IMPL_YAML,
     'implementations/classify-openai/prompts/system.md': _SYSTEM_PROMPT,
+    'implementations/classify-litellm/implementation.yaml': _LITELLM_IMPL_YAML,
+    'implementations/classify-litellm/prompts/system.md': _SYSTEM_PROMPT,
     'datasets/sample/dataset.yaml': _DATASET_YAML,
     'datasets/sample/inputs/001.txt': _INPUT_001,
     'datasets/sample/inputs/002.txt': _INPUT_002,
@@ -174,15 +195,19 @@ def init_command() -> None:
         path.write_text(content)
 
     console.print('[green]Initialized engram project with the classify example.[/green]')
-    console.print('Two implementations of the same workflow are scaffolded so you can compare platforms:')
-    console.print('  [bold]classify-anthropic[/bold]  — Anthropic Messages API')
-    console.print('  [bold]classify-openai[/bold]     — OpenAI Chat Completions API')
+    console.print('Three implementations of the same workflow, for cross-platform comparison:')
+    console.print('  [bold]classify-anthropic[/bold]: Anthropic Messages API')
+    console.print('  [bold]classify-openai[/bold]:    OpenAI Chat Completions API')
+    console.print(
+        '  [bold]classify-litellm[/bold]:   LiteLLM (Gemini by default; change the model prefix to try another)'
+    )
     console.print()
     console.print('[bold]Next steps:[/bold]')
     console.print('  1. Add at least one API key: [cyan]cp .env.example .env[/cyan] and edit it')
-    console.print('  2. Verify the setup:  [cyan]engram status[/cyan]')
-    console.print('  3. Run both evals:')
+    console.print('  2. Check the setup:   [cyan]engram status[/cyan]')
+    console.print('  3. Run the evals:')
     console.print('       [cyan]engram run classify-anthropic --dataset sample[/cyan]')
     console.print('       [cyan]engram run classify-openai --dataset sample[/cyan]')
+    console.print('       [cyan]engram run classify-litellm --dataset sample[/cyan]')
     console.print('  4. Score each run:    [cyan]engram score <experiment-id> --save[/cyan]')
     console.print('  5. Compare platforms: [cyan]engram compare <id-a> <id-b>[/cyan]')
