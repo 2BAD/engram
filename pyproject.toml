@@ -10,11 +10,35 @@ requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.100.0",
     "httpx>=0.28.1",
+    "litellm>=1.83.14",
     "openai>=2.36.0",
+    "python-dotenv>=1.0.0",
     "pyyaml>=6.0.3",
     "questionary>=2.1.1",
     "rich>=15.0.0",
     "typer>=0.25.1",
+]
+
+# LiteLLM's wheel caps requires-python at <3.14, but it imports and runs fine
+# on 3.14. Override the metadata to get past uv's resolver. uv treats the
+# override as a full replacement, so requires-dist has to re-list LiteLLM's
+# runtime deps. Upstream pins exact versions; we don't.
+[[tool.uv.dependency-metadata]]
+name = "litellm"
+requires-python = ">=3.10"
+requires-dist = [
+    "aiohttp",
+    "click",
+    "fastuuid",
+    "httpx",
+    "importlib-metadata",
+    "jinja2",
+    "jsonschema",
+    "openai",
+    "pydantic",
+    "python-dotenv",
+    "tiktoken",
+    "tokenizers",
 ]
 
 [project.scripts]

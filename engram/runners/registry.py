@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from engram.runners.anthropic_agent import AnthropicAgentRunner
 from engram.runners.anthropic_api import AnthropicApiRunner
 from engram.runners.dynamiq import DynamiqRunner
+from engram.runners.litellm_api import LiteLLMRunner
 from engram.runners.openai_api import OpenAIApiRunner
 
 if TYPE_CHECKING:
@@ -16,6 +17,7 @@ _RUNNERS: dict[str, type[Runner]] = {
     'anthropic': AnthropicApiRunner,
     'anthropic-agent': AnthropicAgentRunner,
     'dynamiq': DynamiqRunner,
+    'litellm': LiteLLMRunner,
     'openai': OpenAIApiRunner,
 }
 

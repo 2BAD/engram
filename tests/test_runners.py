@@ -5,6 +5,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import anthropic
+import litellm
 import openai
 import pytest
 
@@ -13,6 +14,7 @@ from engram.models.input import InputData
 from engram.runners.anthropic_agent import AnthropicAgentRunner
 from engram.runners.anthropic_api import AnthropicApiRunner, _parse_json_output
 from engram.runners.errors import MissingAPIKeyError
+from engram.runners.litellm_api import LiteLLMRunner
 from engram.runners.openai_api import OpenAIApiRunner
 from engram.runners.registry import get_runner
 
@@ -32,6 +34,11 @@ def test_get_runner_agent():
 def test_get_runner_openai():
     runner = get_runner('openai')
     assert isinstance(runner, OpenAIApiRunner)
+
+
+def test_get_runner_litellm():
+    runner = get_runner('litellm')
+    assert isinstance(runner, LiteLLMRunner)
 
 
 def test_get_runner_unknown():
@@ -790,3 +797,234 @@ def test_openai_runner_configure_pricing_overrides_rates(tmp_path: Path):
     assert mock_load.call_args.kwargs['overrides']['gpt-5.4-mini']['input_cost_per_token'] == 0.0000002
     # 100 * 0.0000002 + 50 * 0.0000008 = 0.00002 + 0.00004 = 0.00006
     assert result.cost_usd == pytest.approx(0.00006)
+
+
+# --- LiteLLM Runner ---
+
+
+def _make_litellm_impl_config(**overrides: object) -> ImplementationConfig:
+    defaults: dict[str, object] = {
+        'workflow': 'classify',
+        'platform': 'api',
+        'runner': 'litellm',
+        'runner_config': {
+            'api_key_env': 'GEMINI_API_KEY',
+            'model': 'gemini/gemini-2.0-flash',
+            'max_tokens': '4096',
+        },
+        'config_management': ConfigManagement(mode='local'),
+    }
+    defaults.update(overrides)
+    return ImplementationConfig(
+        workflow=str(defaults['workflow']),
+        platform=str(defaults['platform']),
+        runner=str(defaults['runner']),
+        runner_config=cast('dict[str, str]', defaults.get('runner_config', {})),
+        config_management=cast('ConfigManagement', defaults.get('config_management', ConfigManagement())),
+    )
+
+
+_LITELLM_FAKE_PRICING = {
+    'gemini/gemini-2.0-flash': {
+        'input_cost_per_token': 0.0000001,
+        'output_cost_per_token': 0.0000004,
+    },
+    'claude-sonnet-4-5-20250514': {
+        'input_cost_per_token': 0.000003,
+        'output_cost_per_token': 0.000015,
+    },
+}
+
+
+def _make_litellm_response(content: str, prompt_tokens: int = 100, completion_tokens: int = 50) -> MagicMock:
+    mock_response = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = content
+    mock_response.choices = [mock_choice]
+    mock_response.usage.prompt_tokens = prompt_tokens
+    mock_response.usage.completion_tokens = completion_tokens
+    mock_response.usage.total_tokens = prompt_tokens + completion_tokens
+    return mock_response
+
+
+def test_litellm_runner_trigger(tmp_path: Path):
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('You are a classifier. Return JSON.')
+
+    impl_config = _make_litellm_impl_config()
+    mock_response = _make_litellm_response('{"topic": "A", "sentiment": "Positive"}', 100, 50)
+
+    with (
+        patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='some input'), impl_config, tmp_path)
+
+        call_kwargs = mock_completion.call_args.kwargs
+        assert call_kwargs['model'] == 'gemini/gemini-2.0-flash'
+        assert call_kwargs['api_key'] == 'test-key'
+        assert call_kwargs['drop_params'] is True
+        assert call_kwargs['response_format'] == {'type': 'json_object'}
+        assert call_kwargs['messages'][0]['role'] == 'system'
+        assert call_kwargs['messages'][1]['role'] == 'user'
+
+    assert result.status == 'succeeded'
+    assert result.output == {'topic': 'A', 'sentiment': 'Positive'}
+    assert result.usage.prompt_tokens == 100
+    # 100 * 0.0000001 + 50 * 0.0000004 = 0.00003
+    assert result.cost_usd == pytest.approx(0.00003)
+
+
+def test_litellm_runner_without_api_key_env(tmp_path: Path):
+    """When api_key_env is absent, no api_key is forwarded — LiteLLM resolves the env var itself."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={'model': 'gemini/gemini-2.0-flash', 'max_tokens': '4096'},
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        assert 'api_key' not in mock_completion.call_args.kwargs
+
+    assert result.status == 'succeeded'
+
+
+def test_litellm_runner_strips_provider_prefix_for_pricing(tmp_path: Path):
+    """If the full model key isn't in pricing, try the suffix after the slash."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'anthropic/claude-sonnet-4-5-20250514',
+            'max_tokens': '4096',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}', 100, 50)
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response),
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    # Pricing lookup fell back to 'claude-sonnet-4-5-20250514' after the prefixed key missed.
+    # 100 * 0.000003 + 50 * 0.000015 = 0.00105
+    assert result.cost_usd == pytest.approx(0.00105)
+
+
+def test_litellm_runner_unknown_model_zero_cost(tmp_path: Path):
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'GEMINI_API_KEY',
+            'model': 'gemini/nonexistent',
+            'max_tokens': '4096',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response),
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    assert result.status == 'succeeded'
+    assert result.cost_usd == 0.0
+
+
+def test_litellm_runner_api_error(tmp_path: Path):
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config()
+    err = litellm.APIError(
+        status_code=429,
+        message='rate limit exceeded',
+        llm_provider='gemini',
+        model='gemini/gemini-2.0-flash',
+    )
+
+    with (
+        patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', side_effect=err),
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'rate limit exceeded' in result.error
+    assert result.cost_usd == 0.0
+
+
+def test_litellm_runner_parse_failure_still_records_cost(tmp_path: Path):
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config()
+    mock_response = _make_litellm_response('not json at all', 100, 50)
+
+    with (
+        patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response),
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    assert result.status == 'failed'
+    assert 'Failed to parse JSON' in result.error
+    assert result.cost_usd == pytest.approx(0.00003)
+
+
+def test_litellm_runner_missing_key_raises_friendly_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config()
+    with pytest.raises(MissingAPIKeyError) as excinfo:
+        LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    assert excinfo.value.env_var == 'GEMINI_API_KEY'
+
+
+def test_litellm_runner_required_env_vars_present():
+    impl_config = _make_litellm_impl_config()
+    assert LiteLLMRunner().required_env_vars(impl_config) == ['GEMINI_API_KEY']
+
+
+def test_litellm_runner_required_env_vars_absent():
+    """When api_key_env isn't set, no env var is reported — LiteLLM resolves it from the provider prefix."""
+    impl_config = _make_litellm_impl_config(
+        runner_config={'model': 'gemini/gemini-2.0-flash', 'max_tokens': '4096'},
+    )
+    assert LiteLLMRunner().required_env_vars(impl_config) == []
+
+
+def test_litellm_runner_snapshot(tmp_path: Path):
+    prompts_dir = tmp_path / 'prompts'
+    prompts_dir.mkdir()
+    (prompts_dir / 'system.md').write_text('You are a classifier.')
+
+    impl_config = _make_litellm_impl_config()
+    snap = LiteLLMRunner().snapshot_config(impl_config, tmp_path)
+
+    assert snap.models == ['gemini/gemini-2.0-flash']
+    assert 'system.md' in snap.prompts
+    assert 'api_key_env' not in snap.runner_config
