@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import anthropic
 from anthropic.types import MessageParam, TextBlockParam
 
-from engram.cost.pricing import compute_cost_components, load_pricing
+from engram.cost.pricing import compute_cost_components, compute_cost_without_cache, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -86,6 +86,7 @@ class AnthropicApiRunner(Runner):
         )
         components = self._compute_cost_components(model, usage)
         cost_usd = sum(components.values())
+        cost_no_cache = self._compute_no_cache_cost(model, usage)
 
         raw_text = getattr(response.content[0], 'text', '') if response.content else ''
         output = _parse_json_output(raw_text)
@@ -101,6 +102,7 @@ class AnthropicApiRunner(Runner):
                 cost_cache_read_usd=components['cache_read_usd'],
                 cost_cache_creation_usd=components['cache_creation_usd'],
                 cost_output_usd=components['output_usd'],
+                cost_without_cache_usd=cost_no_cache,
                 latency_ms=latency,
                 error=f'Failed to parse JSON from response: {raw_text[:200]}',
             )
@@ -115,6 +117,7 @@ class AnthropicApiRunner(Runner):
             cost_cache_read_usd=components['cache_read_usd'],
             cost_cache_creation_usd=components['cache_creation_usd'],
             cost_output_usd=components['output_usd'],
+            cost_without_cache_usd=cost_no_cache,
             latency_ms=latency,
         )
 
@@ -123,6 +126,12 @@ class AnthropicApiRunner(Runner):
         if self._pricing is None:
             self._pricing = load_pricing()
         return compute_cost_components(self._pricing, model, usage)
+
+    def _compute_no_cache_cost(self, model: str, usage: TokenUsage) -> float:
+        """Counterfactual cost: what this call would have cost with no cache discount or premium."""
+        if self._pricing is None:
+            self._pricing = load_pricing()
+        return compute_cost_without_cache(self._pricing, model, usage)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""

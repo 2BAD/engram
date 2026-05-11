@@ -72,6 +72,17 @@ def compute_cost(pricing: dict[str, Any], model: str, usage: TokenUsage) -> floa
     return sum(compute_cost_components(pricing, model, usage).values())
 
 
+def compute_cost_without_cache(pricing: dict[str, Any], model: str, usage: TokenUsage) -> float:
+    """
+    Counterfactual cost: every prompt token billed at the full input rate, no cache discount or premium.
+
+    Used to quantify how much prompt caching is saving on this run. Since engram's ``prompt_tokens`` is
+    the inclusive total (uncached + cache reads + cache creation), this is just the simple two-rate sum.
+    """
+    input_rate, output_rate = find_rate(pricing, model)
+    return usage.prompt_tokens * input_rate + usage.completion_tokens * output_rate
+
+
 def compute_cost_components(pricing: dict[str, Any], model: str, usage: TokenUsage) -> dict[str, float]:
     """
     Per-bucket cost for a single run.

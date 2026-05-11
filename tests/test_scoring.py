@@ -880,6 +880,110 @@ def test_score_experiment_single_repeat_omits_agreement_metrics(tmp_path: Path):
     assert topic.accuracy_stdev is None
 
 
+def test_score_experiment_aggregates_tokens_and_no_cache_total(tmp_path: Path):
+    """EvalReport carries token totals and the counterfactual cost so display doesn't have to re-read results."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['usage'] = {
+            'prompt_tokens': 1000,
+            'completion_tokens': 100,
+            'total_tokens': 1100,
+            'cache_read_tokens': 800,
+            'cache_creation_tokens': 0,
+        }
+        r['cost_usd'] = 0.005
+        r['cost_input_usd'] = 0.001
+        r['cost_cache_read_usd'] = 0.001
+        r['cost_cache_creation_usd'] = 0.0
+        r['cost_output_usd'] = 0.003
+        r['cost_without_cache_usd'] = 0.012
+    results_path.write_text(json.dumps(data))
+
+    report = score_experiment(tmp_path, experiment_id)
+
+    assert report.tokens_prompt == 3000
+    assert report.tokens_cache_read == 2400
+    assert report.tokens_cache_creation == 0
+    assert report.tokens_completion == 300
+    assert report.cost_without_cache_total_usd == pytest.approx(0.036)
+    # Counterfactual is meaningfully larger than the actual cost — caching paid off.
+    assert report.cost_without_cache_total_usd > report.cost_total_usd
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_renders_tokens_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When token data is recorded, the Tokens table renders with total + avg columns and the cache breakdown."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['usage'] = {
+            'prompt_tokens': 1000,
+            'completion_tokens': 100,
+            'total_tokens': 1100,
+            'cache_read_tokens': 800,
+            'cache_creation_tokens': 0,
+        }
+        r['cost_usd'] = 0.005
+    results_path.write_text(json.dumps(data))
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'Tokens' in result.output
+    # Per-call averages render — 3 calls at 1000 prompt each → avg 1,000.
+    assert 'Avg / call' in result.output or 'Avg' in result.output
+    # Cache breakdown rows appear because cache_read_tokens > 0.
+    assert 'cache read' in result.output
+    assert 'Hit rate' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_renders_savings_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When cost_without_cache is recorded, the Cost table includes a Saved row with the absolute and pct delta."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['cost_usd'] = 0.005
+        r['cost_without_cache_usd'] = 0.050  # 10x what we actually paid
+    results_path.write_text(json.dumps(data))
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'Without cache' in result.output
+    assert 'Saved' in result.output
+    # 90% savings: $0.135 / $0.150
+    assert '90.0%' in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_renders_cache_overhead_when_savings_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A cold run that paid the creation premium without enough reads should show overhead, not savings."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    for r in data['results']:
+        r['cost_usd'] = 0.012  # ended up paying more
+        r['cost_without_cache_usd'] = 0.010  # than the no-cache counterfactual
+    results_path.write_text(json.dumps(data))
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'overhead' in result.output
+
+
 @pytest.mark.usefixtures('rich_mode')
 def test_score_command_renders_cost_breakdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """When results carry per-bucket cost, the rich Cost table includes the four-row breakdown."""

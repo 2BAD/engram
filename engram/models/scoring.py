@@ -58,6 +58,16 @@ class EvalReport:
     cost_cache_read_usd: float = 0.0
     cost_cache_creation_usd: float = 0.0
     cost_output_usd: float = 0.0
+    # Counterfactual total — what every successful run would have cost without prompt caching.
+    # The delta vs ``cost_total_usd`` is what caching saved across the experiment (negative on
+    # cold runs that paid the creation premium without recouping it through reads).
+    cost_without_cache_total_usd: float = 0.0
+    # Token aggregates across all successful runs. Keep them on the report so display doesn't
+    # have to re-load results.json just to render a tokens table.
+    tokens_prompt: int = 0
+    tokens_cache_read: int = 0
+    tokens_cache_creation: int = 0
+    tokens_completion: int = 0
     # Fraction of input tokens that hit a prompt cache across all successful runs.
     # None when no runs reported any cache activity (so the cost table can hide the row).
     cache_hit_rate: float | None = None

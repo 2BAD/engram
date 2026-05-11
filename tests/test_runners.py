@@ -159,6 +159,43 @@ def test_api_runner_prompt_cache_off_sends_plain_string(tmp_path: Path):
         assert call_kwargs['system'] == 'prompt'
 
 
+def test_api_runner_records_cost_without_cache(tmp_path: Path):
+    """RunResult.cost_without_cache_usd is the counterfactual price at full input rate."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+    mock_response.usage.cache_creation_input_tokens = 200
+    mock_response.usage.cache_read_input_tokens = 700
+
+    fake_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+            'cache_creation_input_token_cost': 0.00000375,
+            'cache_read_input_token_cost': 0.0000003,
+        },
+    }
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=fake_pricing),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    # prompt_total = 1000 (100 + 200 + 700). At full input rate: 1000 * 3e-6 + 50 * 1.5e-5 = 0.00375
+    assert result.cost_without_cache_usd == pytest.approx(1000 * 3e-6 + 50 * 1.5e-5)
+    # And actual cost is lower because most tokens hit the cache-read rate.
+    assert result.cost_usd < result.cost_without_cache_usd
+
+
 def test_api_runner_extracts_cache_tokens_and_prices_them(tmp_path: Path):
     """Anthropic reports cache_creation + cache_read additively; runner normalizes and the cost helper prices them."""
     (tmp_path / 'prompts').mkdir()

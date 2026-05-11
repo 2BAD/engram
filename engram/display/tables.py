@@ -17,6 +17,7 @@ console = Console()
 def print_eval_report(report: EvalReport) -> None:
     """Print a formatted evaluation report."""
     _print_metrics_table(report)
+    _print_tokens_table(report)
     _print_cost_table(report)
 
     for cm in report.confusion_matrices:
@@ -105,6 +106,75 @@ def _format_optional_kappa(value: float | None) -> str:
     return f'{value:.2f}'
 
 
+def _print_tokens_table(report: EvalReport) -> None:
+    """
+    Tokens table: prompt/cache-read/cache-write/completion totals with per-call averages.
+
+    Hidden entirely when no token data was recorded. The prompt-bucket sub-rows and the hit-rate
+    row only render when prompt caching was actually exercised; for a no-cache run the table is
+    just Prompt/Completion/Total so it stays useful but quiet.
+    """
+    if report.tokens_prompt == 0 and report.tokens_completion == 0:
+        return
+
+    n_calls = _successful_call_count(report)
+    has_cache = report.tokens_cache_read > 0 or report.tokens_cache_creation > 0
+
+    table = Table(title='Tokens')
+    table.add_column(Text('Metric', justify='center'), style='bold')
+    table.add_column(Text('Total', justify='center'), justify='right')
+    table.add_column(Text('Avg / call', justify='center'), justify='right')
+
+    table.add_row('Prompt', _tokens(report.tokens_prompt), _tokens_avg(report.tokens_prompt, n_calls))
+    if has_cache:
+        uncached = max(report.tokens_prompt - report.tokens_cache_read - report.tokens_cache_creation, 0)
+        table.add_row('  ├ uncached', _tokens(uncached), _tokens_avg(uncached, n_calls))
+        table.add_row(
+            '  ├ cache read',
+            _tokens(report.tokens_cache_read),
+            _tokens_avg(report.tokens_cache_read, n_calls),
+        )
+        table.add_row(
+            '  └ cache write',
+            _tokens(report.tokens_cache_creation),
+            _tokens_avg(report.tokens_cache_creation, n_calls),
+        )
+    table.add_row('Completion', _tokens(report.tokens_completion), _tokens_avg(report.tokens_completion, n_calls))
+    table.add_row(
+        'Total',
+        _tokens(report.tokens_prompt + report.tokens_completion),
+        _tokens_avg(report.tokens_prompt + report.tokens_completion, n_calls),
+    )
+    if report.cache_hit_rate is not None:
+        # Cache hit rate is an experiment-level proportion, no per-call value to show.
+        table.add_row('Hit rate', f'{report.cache_hit_rate:.1%}', '')
+
+    console.print(table)
+    console.print()
+
+
+def _tokens(n: int) -> str:
+    return f'{n:,}'
+
+
+def _tokens_avg(total: int, calls: int) -> str:
+    if calls <= 0:
+        return ''
+    return f'{round(total / calls):,}'
+
+
+def _successful_call_count(report: EvalReport) -> int:
+    """
+    Recover the number of successful calls from the matched_examples and completion total.
+
+    Falls back to ``matched_examples`` when there's no usage data. Used only as a divisor for
+    per-call averages in the tokens table.
+    """
+    if report.matched_examples > 0:
+        return report.matched_examples
+    return 1
+
+
 def _print_cost_table(report: EvalReport) -> None:
     if report.cost_total_usd == 0:
         return
@@ -132,6 +202,17 @@ def _print_cost_table(report: EvalReport) -> None:
 
     if report.cache_hit_rate is not None:
         table.add_row('Cache hit rate', f'{report.cache_hit_rate:.1%}')
+
+    # Savings line: how much caching is worth vs the full-input-rate counterfactual.
+    # Negative on a cold run that paid the creation premium without enough reads to recoup.
+    if report.cost_without_cache_total_usd > 0:
+        saved = report.cost_without_cache_total_usd - report.cost_total_usd
+        pct = saved / report.cost_without_cache_total_usd if report.cost_without_cache_total_usd else 0.0
+        table.add_row('Without cache', f'${report.cost_without_cache_total_usd:.4f}')
+        if saved >= 0:
+            table.add_row('Saved', f'[green]${saved:.4f} ({pct:.1%})[/green]')
+        else:
+            table.add_row('Saved', f'[red]-${abs(saved):.4f} ({abs(pct):.1%} overhead)[/red]')
 
     console.print(table)
     console.print()

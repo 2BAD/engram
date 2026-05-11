@@ -44,6 +44,11 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         cost_cache_read_usd=raw.get('cost_cache_read_usd', 0.0),
         cost_cache_creation_usd=raw.get('cost_cache_creation_usd', 0.0),
         cost_output_usd=raw.get('cost_output_usd', 0.0),
+        cost_without_cache_total_usd=raw.get('cost_without_cache_total_usd', 0.0),
+        tokens_prompt=raw.get('tokens_prompt', 0),
+        tokens_cache_read=raw.get('tokens_cache_read', 0),
+        tokens_cache_creation=raw.get('tokens_cache_creation', 0),
+        tokens_completion=raw.get('tokens_completion', 0),
         cache_hit_rate=raw.get('cache_hit_rate'),
         labels_hash=raw.get('labels_hash', ''),
         labels_count=raw.get('labels_count', 0),
@@ -107,6 +112,11 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     cost_cache_read = sum(r.cost_cache_read_usd for r in successful)
     cost_cache_creation = sum(r.cost_cache_creation_usd for r in successful)
     cost_output = sum(r.cost_output_usd for r in successful)
+    cost_without_cache = sum(r.cost_without_cache_usd for r in successful)
+    tokens_prompt = sum(r.usage.prompt_tokens for r in successful)
+    tokens_cache_read = sum(r.usage.cache_read_tokens for r in successful)
+    tokens_cache_creation = sum(r.usage.cache_creation_tokens for r in successful)
+    tokens_completion = sum(r.usage.completion_tokens for r in successful)
 
     return EvalReport(
         experiment_id=experiment_id,
@@ -121,6 +131,11 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
         cost_cache_read_usd=cost_cache_read,
         cost_cache_creation_usd=cost_cache_creation,
         cost_output_usd=cost_output,
+        cost_without_cache_total_usd=cost_without_cache,
+        tokens_prompt=tokens_prompt,
+        tokens_cache_read=tokens_cache_read,
+        tokens_cache_creation=tokens_cache_creation,
+        tokens_completion=tokens_completion,
         cache_hit_rate=cache_hit_rate,
         labels_hash=compute_labels_hash(labels),
         labels_count=len(labels),

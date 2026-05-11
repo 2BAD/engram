@@ -38,6 +38,10 @@ class RunResult:
     cost_cache_read_usd: float = 0.0
     cost_cache_creation_usd: float = 0.0
     cost_output_usd: float = 0.0
+    # What this call would have cost with no cache discount or write premium — every prompt token at
+    # the full input rate. ``cost_without_cache_usd - cost_usd`` is the savings (negative on a cold
+    # call that paid the creation premium without any reads).
+    cost_without_cache_usd: float = 0.0
     latency_ms: float = 0.0
     error: str = ''
     trace_id: str = ''

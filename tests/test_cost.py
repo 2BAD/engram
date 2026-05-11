@@ -13,6 +13,7 @@ from engram.cost.pricing import (
     _apply_overrides,
     compute_cost,
     compute_cost_components,
+    compute_cost_without_cache,
     find_cache_rates,
     find_rate,
 )
@@ -157,6 +158,24 @@ def test_compute_cost_cache_savings_are_significant():
 def test_compute_cost_unknown_model_zero():
     usage = TokenUsage(prompt_tokens=100, completion_tokens=50, cache_read_tokens=10)
     assert compute_cost({}, 'unknown', usage) == 0.0
+
+
+def test_compute_cost_without_cache_bills_full_input_rate():
+    """The counterfactual prices every prompt token at the full input rate, with no cache splits."""
+    usage = TokenUsage(
+        prompt_tokens=1000, completion_tokens=200, total_tokens=1200, cache_read_tokens=600, cache_creation_tokens=100
+    )
+    no_cache = compute_cost_without_cache(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    # 1000 * 3e-6 + 200 * 1.5e-5 = 3e-3 + 3e-3 = 6e-3
+    assert no_cache == pytest.approx(1000 * 3e-6 + 200 * 1.5e-5)
+    # And it's strictly more than the real cost when caching helped.
+    actual = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    assert no_cache > actual
+
+
+def test_compute_cost_without_cache_unknown_model_zero():
+    usage = TokenUsage(prompt_tokens=100, completion_tokens=50, cache_read_tokens=10)
+    assert compute_cost_without_cache({}, 'unknown', usage) == 0.0
 
 
 def test_compute_cost_components_sums_to_total():
