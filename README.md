@@ -16,14 +16,15 @@ uv tool uninstall engram                             # remove
 
 ## Quick start
 
-`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **two** implementations (`classify-anthropic` and `classify-openai`) so you can compare platforms right away, and a tiny labeled `sample` dataset.
+`engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **three** implementations (`classify-anthropic`, `classify-openai`, and `classify-litellm`) so you can compare platforms right away, and a tiny labeled `sample` dataset.
 
 ```sh
-engram init                                         # scaffold project + two implementations + sample dataset
+engram init                                         # scaffold project + three implementations + sample dataset
 cp .env.example .env                                # then edit .env and paste your API keys
-engram status                                       # verify both impls load cleanly
+engram status                                       # check all impls load cleanly
 engram run classify-anthropic --dataset sample      # run against Anthropic (#1)
 engram run classify-openai --dataset sample         # run against OpenAI (#2)
+engram run classify-litellm --dataset sample        # run against Gemini via LiteLLM (#3)
 engram score --save                                 # pick a run to score interactively
 engram compare                                      # pick two experiments to diff interactively
 engram explain                                      # LLM-powered analysis of why metrics look the way they do
@@ -36,7 +37,13 @@ Rename the implementations and dataset once you replace the example with your ow
 
 ## Supported runners
 
-`anthropic`, `openai`, `anthropic-agent` (local Python agent), `dynamiq` (hosted). Custom runners can be added by implementing the `Runner` interface.
+- `anthropic` - Anthropic Messages API
+- `openai` - OpenAI Chat Completions API
+- `litellm` - any provider via [LiteLLM](https://github.com/BerriAI/litellm); model prefix picks the backend (`gemini/`, `bedrock/`, `groq/`, `ollama/`, `vertex_ai/`, etc.)
+- `anthropic-agent` - local Python agent
+- `dynamiq` - hosted platform
+
+Custom runners can be added by implementing the `Runner` interface.
 
 ## Development
 
