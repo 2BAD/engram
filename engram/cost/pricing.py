@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from engram.models.run import TokenUsage
 
 LITELLM_PRICING_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
 CACHE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
@@ -41,21 +44,68 @@ def find_rate(pricing: dict[str, Any], model: str) -> tuple[float, float]:
     """
     Find input and output token rates for a model.
 
-    Returns (input_cost_per_token, output_cost_per_token).
-    Falls back to zero if model not found.
+    Falls back to zero if no match. Tries the model name as-is, then a
+    dash/underscore-insensitive normalization, then (for litellm-style names
+    like ``anthropic/claude-...``) the suffix after the slash.
     """
-    model_data = pricing.get(model, {})
-    if not model_data:
-        # Try normalizing the model name
-        normalized = model.lower().replace('-', '_')
-        for key, data in pricing.items():
-            if key.lower().replace('-', '_') == normalized:
-                model_data = data
-                break
+    data = _find_model_data(pricing, model)
+    return data.get('input_cost_per_token', 0.0), data.get('output_cost_per_token', 0.0)
 
-    input_cost = model_data.get('input_cost_per_token', 0.0)
-    output_cost = model_data.get('output_cost_per_token', 0.0)
-    return input_cost, output_cost
+
+def find_cache_rates(pricing: dict[str, Any], model: str) -> tuple[float, float]:
+    """
+    Cache-creation and cache-read rates for a model.
+
+    Returns ``(creation_rate, read_rate)``. Either rate falls back to the
+    model's regular ``input_cost_per_token`` when missing, so cost math stays
+    correct for models without prompt-caching pricing data.
+    """
+    data = _find_model_data(pricing, model)
+    input_rate = data.get('input_cost_per_token', 0.0)
+    creation = data.get('cache_creation_input_token_cost', input_rate)
+    read = data.get('cache_read_input_token_cost', input_rate)
+    return creation, read
+
+
+def compute_cost(pricing: dict[str, Any], model: str, usage: TokenUsage) -> float:
+    """
+    Total billed cost for a single run.
+
+    Splits ``prompt_tokens`` into three buckets (non-cached input, cache reads,
+    cache creation) and prices each at its own rate. Output tokens at the
+    output rate. Safe with zero cache token counts (falls back to a plain
+    input * input_rate + output * output_rate sum).
+    """
+    input_rate, output_rate = find_rate(pricing, model)
+    creation_rate, read_rate = find_cache_rates(pricing, model)
+    non_cached = max(0, usage.prompt_tokens - usage.cache_read_tokens - usage.cache_creation_tokens)
+    return (
+        non_cached * input_rate
+        + usage.cache_creation_tokens * creation_rate
+        + usage.cache_read_tokens * read_rate
+        + usage.completion_tokens * output_rate
+    )
+
+
+def _find_model_data(pricing: dict[str, Any], model: str) -> dict[str, Any]:
+    if model in pricing:
+        return pricing[model]
+
+    normalized = model.lower().replace('-', '_')
+    for key, data in pricing.items():
+        if key.lower().replace('-', '_') == normalized:
+            return data
+
+    if '/' in model:
+        suffix = model.split('/', 1)[1]
+        if suffix in pricing:
+            return pricing[suffix]
+        normalized_suffix = suffix.lower().replace('-', '_')
+        for key, data in pricing.items():
+            if key.lower().replace('-', '_') == normalized_suffix:
+                return data
+
+    return {}
 
 
 def _fetch_pricing() -> dict[str, Any]:

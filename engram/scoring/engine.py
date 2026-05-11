@@ -40,6 +40,7 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         cost_avg_usd=raw.get('cost_avg_usd', 0.0),
         cost_median_usd=raw.get('cost_median_usd', 0.0),
         cost_p95_usd=raw.get('cost_p95_usd', 0.0),
+        cache_hit_rate=raw.get('cache_hit_rate'),
         labels_hash=raw.get('labels_hash', ''),
         labels_count=raw.get('labels_count', 0),
         labels_scored_at=raw.get('labels_scored_at', ''),
@@ -96,6 +97,9 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     costs = [r.cost_usd for r in results if r.status == 'succeeded' and r.cost_usd > 0]
     cost_total, cost_avg, cost_median, cost_p95 = compute_cost_stats(costs)
 
+    successful = [r for r in results if r.status == 'succeeded']
+    cache_hit_rate = _compute_cache_hit_rate(successful)
+
     return EvalReport(
         experiment_id=experiment_id,
         matched_examples=matched_examples,
@@ -105,10 +109,23 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
         cost_avg_usd=cost_avg,
         cost_median_usd=cost_median,
         cost_p95_usd=cost_p95,
+        cache_hit_rate=cache_hit_rate,
         labels_hash=compute_labels_hash(labels),
         labels_count=len(labels),
         labels_scored_at=datetime.now(UTC).isoformat(),
     )
+
+
+def _compute_cache_hit_rate(results: list[RunResult]) -> float | None:
+    """Aggregate cache-read tokens over total prompt tokens. None when neither is recorded."""
+    total_prompt = sum(r.usage.prompt_tokens for r in results)
+    total_cache_read = sum(r.usage.cache_read_tokens for r in results)
+    total_cache_creation = sum(r.usage.cache_creation_tokens for r in results)
+    if total_cache_read == 0 and total_cache_creation == 0:
+        return None
+    if total_prompt == 0:
+        return None
+    return total_cache_read / total_prompt
 
 
 def _collect_scores(

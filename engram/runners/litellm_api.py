@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import litellm
 
-from engram.cost.pricing import find_rate, load_pricing
+from engram.cost.pricing import compute_cost, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -81,11 +81,18 @@ class LiteLLMRunner(Runner):
 
         latency = (time.monotonic() - start) * 1000
 
+        # LiteLLM normalizes provider usage to the OpenAI shape: cached_tokens
+        # lives under prompt_tokens_details and is a subset of prompt_tokens.
         u = getattr(response, 'usage', None)
+        cache_read = 0
+        if u is not None:
+            details = getattr(u, 'prompt_tokens_details', None)
+            cache_read = _as_int(getattr(details, 'cached_tokens', 0))
         usage = TokenUsage(
             prompt_tokens=getattr(u, 'prompt_tokens', 0) if u else 0,
             completion_tokens=getattr(u, 'completion_tokens', 0) if u else 0,
             total_tokens=getattr(u, 'total_tokens', 0) if u else 0,
+            cache_read_tokens=cache_read,
         )
         cost_usd = self._compute_cost(model, usage)
 
@@ -117,13 +124,10 @@ class LiteLLMRunner(Runner):
         )
 
     def _compute_cost(self, model: str, usage: TokenUsage) -> float:
-        """Compute USD cost using engram's pricing cache. Strip provider prefix on miss."""
+        """Compute USD cost using engram's pricing cache."""
         if self._pricing is None:
             self._pricing = load_pricing()
-        input_rate, output_rate = find_rate(self._pricing, model)
-        if input_rate == 0.0 and output_rate == 0.0 and '/' in model:
-            input_rate, output_rate = find_rate(self._pricing, model.split('/', 1)[1])
-        return usage.prompt_tokens * input_rate + usage.completion_tokens * output_rate
+        return compute_cost(self._pricing, model, usage)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""
@@ -142,6 +146,11 @@ class LiteLLMRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _as_int(value: object) -> int:
+    """Coerce SDK-reported numeric fields to int; treat anything else (None, MagicMock, ...) as 0."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _build_content(input_data: InputData) -> str | list[dict[str, Any]]:

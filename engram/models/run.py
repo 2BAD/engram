@@ -6,11 +6,21 @@ from typing import Any, Literal
 
 @dataclass
 class TokenUsage:
-    """Token counts from a single run."""
+    """
+    Token counts from a single run.
+
+    ``prompt_tokens`` is the total input including any cache reads and creation;
+    ``cache_read_tokens`` and ``cache_creation_tokens`` are subsets of it. This
+    convention lets cost compute as a single sum across four rates regardless
+    of provider (Anthropic and OpenAI report cache differently in their raw
+    APIs; runners normalize before storing).
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 @dataclass

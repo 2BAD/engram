@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import anthropic
 from anthropic.types import MessageParam
 
-from engram.cost.pricing import find_rate, load_pricing
+from engram.cost.pricing import compute_cost, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -69,10 +69,18 @@ class AnthropicApiRunner(Runner):
 
         latency = (time.monotonic() - start) * 1000
 
+        # Anthropic reports cache_creation and cache_read tokens *in addition* to
+        # input_tokens. Normalize to engram's convention where prompt_tokens is
+        # the inclusive total so the cost helper can split it back out.
+        cache_creation = _as_int(getattr(response.usage, 'cache_creation_input_tokens', 0))
+        cache_read = _as_int(getattr(response.usage, 'cache_read_input_tokens', 0))
+        input_total = response.usage.input_tokens + cache_creation + cache_read
         usage = TokenUsage(
-            prompt_tokens=response.usage.input_tokens,
+            prompt_tokens=input_total,
             completion_tokens=response.usage.output_tokens,
-            total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+            total_tokens=input_total + response.usage.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_creation,
         )
         cost_usd = self._compute_cost(model, usage)
 
@@ -103,8 +111,7 @@ class AnthropicApiRunner(Runner):
         """Compute USD cost from token usage using cached LiteLLM pricing data."""
         if self._pricing is None:
             self._pricing = load_pricing()
-        input_rate, output_rate = find_rate(self._pricing, model)
-        return usage.prompt_tokens * input_rate + usage.completion_tokens * output_rate
+        return compute_cost(self._pricing, model, usage)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""
@@ -123,6 +130,11 @@ class AnthropicApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _as_int(value: object) -> int:
+    """Coerce SDK-reported numeric fields to int; treat anything else (None, MagicMock, ...) as 0."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _build_anthropic_content(input_data: InputData) -> str | list[dict[str, Any]]:

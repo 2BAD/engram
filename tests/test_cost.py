@@ -9,7 +9,8 @@ from typer.testing import CliRunner
 
 from engram.cli import app
 from engram.cost.estimator import _rough_token_count, estimate_cost
-from engram.cost.pricing import _apply_overrides, find_rate
+from engram.cost.pricing import _apply_overrides, compute_cost, find_cache_rates, find_rate
+from engram.models.run import TokenUsage
 
 # --- Pricing ---
 
@@ -53,6 +54,103 @@ def test_apply_overrides():
 def test_apply_overrides_none():
     pricing = {'model-a': {'input_cost_per_token': 0.001}}
     assert _apply_overrides(pricing, None) is pricing
+
+
+def test_find_rate_strips_provider_prefix():
+    """A litellm-style `provider/model` key falls back to the unprefixed entry."""
+    pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+        }
+    }
+    input_rate, output_rate = find_rate(pricing, 'anthropic/claude-sonnet-4-5-20250514')
+    assert input_rate == 0.000003
+    assert output_rate == 0.000015
+
+
+# --- Cache rates ---
+
+
+_CACHE_FAKE_PRICING = {
+    'claude-sonnet-4-5-20250514': {
+        'input_cost_per_token': 0.000003,
+        'output_cost_per_token': 0.000015,
+        'cache_creation_input_token_cost': 0.00000375,
+        'cache_read_input_token_cost': 0.0000003,
+    },
+    'gpt-test': {
+        'input_cost_per_token': 0.000001,
+        'output_cost_per_token': 0.000004,
+        'cache_read_input_token_cost': 0.0000001,
+    },
+    'plain': {
+        'input_cost_per_token': 0.000001,
+        'output_cost_per_token': 0.000004,
+    },
+}
+
+
+def test_find_cache_rates_explicit():
+    creation, read = find_cache_rates(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514')
+    assert creation == 0.00000375
+    assert read == 0.0000003
+
+
+def test_find_cache_rates_falls_back_to_input_rate():
+    """Models without prompt-caching rates fall back to the regular input rate, so cost math is conservative."""
+    creation, read = find_cache_rates(_CACHE_FAKE_PRICING, 'plain')
+    assert creation == 0.000001
+    assert read == 0.000001
+
+
+def test_find_cache_rates_partial():
+    """A model with only cache_read pricing keeps the input fallback for creation."""
+    creation, read = find_cache_rates(_CACHE_FAKE_PRICING, 'gpt-test')
+    assert creation == 0.000001
+    assert read == 0.0000001
+
+
+# --- compute_cost ---
+
+
+def test_compute_cost_no_cache_matches_legacy_formula():
+    """With zero cache tokens, compute_cost reduces to prompt * input + completion * output."""
+    usage = TokenUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+    cost = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    # 100 * 0.000003 + 50 * 0.000015 = 0.00105
+    assert cost == pytest.approx(0.00105)
+
+
+def test_compute_cost_splits_cache_buckets():
+    """Cache reads price at the read rate, creation at the creation rate, remainder at the input rate."""
+    usage = TokenUsage(
+        prompt_tokens=1000,  # inclusive total
+        completion_tokens=200,
+        total_tokens=1200,
+        cache_read_tokens=800,
+        cache_creation_tokens=100,
+    )
+    # non_cached = 1000 - 800 - 100 = 100
+    # 100 * 3e-6  + 100 * 3.75e-6 + 800 * 3e-7 + 200 * 1.5e-5
+    # = 3e-4    + 3.75e-4    + 2.4e-4   + 3e-3
+    expected = 100 * 3e-6 + 100 * 3.75e-6 + 800 * 3e-7 + 200 * 1.5e-5
+    cost = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', usage)
+    assert cost == pytest.approx(expected)
+
+
+def test_compute_cost_cache_savings_are_significant():
+    """Sanity check: with 90% cache hit rate, total cost drops to roughly a third."""
+    no_cache = TokenUsage(prompt_tokens=1000, completion_tokens=100, total_tokens=1100)
+    with_cache = TokenUsage(prompt_tokens=1000, completion_tokens=100, total_tokens=1100, cache_read_tokens=900)
+    plain = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', no_cache)
+    cached = compute_cost(_CACHE_FAKE_PRICING, 'claude-sonnet-4-5-20250514', with_cache)
+    assert cached < plain * 0.5
+
+
+def test_compute_cost_unknown_model_zero():
+    usage = TokenUsage(prompt_tokens=100, completion_tokens=50, cache_read_tokens=10)
+    assert compute_cost({}, 'unknown', usage) == 0.0
 
 
 # --- Token counting ---

@@ -51,6 +51,9 @@ class EvalReport:
     cost_avg_usd: float = 0.0
     cost_median_usd: float = 0.0
     cost_p95_usd: float = 0.0
+    # Fraction of input tokens that hit a prompt cache across all successful runs.
+    # None when no runs reported any cache activity (so the cost table can hide the row).
+    cache_hit_rate: float | None = None
     # Fingerprint of the labels payload used for this scoring run. Lets `compare`
     # detect ground-truth drift between two experiments and `score` short-circuit
     # a rewrite when labels haven't moved. Empty string for reports produced

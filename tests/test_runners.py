@@ -99,6 +99,47 @@ _FAKE_PRICING = {
 }
 
 
+def test_api_runner_extracts_cache_tokens_and_prices_them(tmp_path: Path):
+    """Anthropic reports cache_creation + cache_read additively; runner normalizes and the cost helper prices them."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('long stable system prompt')
+
+    impl_config = _make_impl_config()
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 100  # non-cached input
+    mock_response.usage.output_tokens = 50
+    mock_response.usage.cache_creation_input_tokens = 200
+    mock_response.usage.cache_read_input_tokens = 700
+
+    fake_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+            'cache_creation_input_token_cost': 0.00000375,
+            'cache_read_input_token_cost': 0.0000003,
+        },
+    }
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=fake_pricing),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        result = AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    # prompt_tokens is the inclusive total (engram convention), even though Anthropic
+    # reports the three buckets separately.
+    assert result.usage.prompt_tokens == 1000
+    assert result.usage.cache_creation_tokens == 200
+    assert result.usage.cache_read_tokens == 700
+    # 100 non-cached * 3e-6 + 200 creation * 3.75e-6 + 700 read * 3e-7 + 50 output * 1.5e-5
+    expected = 100 * 3e-6 + 200 * 3.75e-6 + 700 * 3e-7 + 50 * 1.5e-5
+    assert result.cost_usd == pytest.approx(expected)
+
+
 def test_api_runner_trigger(tmp_path: Path):
     # Set up prompt file
     prompts_dir = tmp_path / 'prompts'
@@ -519,6 +560,40 @@ def _make_openai_response(content: str, prompt_tokens: int = 100, completion_tok
     return mock_response
 
 
+def test_openai_runner_extracts_cached_tokens(tmp_path: Path):
+    """OpenAI reports cached_tokens as a subset of prompt_tokens via prompt_tokens_details."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config()
+    # prompt_tokens (1000) already INCLUDES cached_tokens (900).
+    mock_response = _make_openai_response('{"topic": "A"}', prompt_tokens=1000, completion_tokens=50)
+    mock_response.usage.prompt_tokens_details.cached_tokens = 900
+
+    fake_pricing = {
+        'gpt-5.4-mini': {
+            'input_cost_per_token': 0.0000001,
+            'output_cost_per_token': 0.0000004,
+            'cache_read_input_token_cost': 0.00000001,
+        },
+    }
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.openai_api.openai.OpenAI') as mock_cls,
+        patch('engram.runners.openai_api.load_pricing', return_value=fake_pricing),
+    ):
+        mock_cls.return_value.chat.completions.create.return_value = mock_response
+        result = OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    # prompt_tokens stays as OpenAI reported it (already inclusive of cached).
+    assert result.usage.prompt_tokens == 1000
+    assert result.usage.cache_read_tokens == 900
+    # 100 non-cached * 1e-7 + 900 read * 1e-8 + 50 output * 4e-7 = 0.0000390
+    expected = 100 * 1e-7 + 900 * 1e-8 + 50 * 4e-7
+    assert result.cost_usd == pytest.approx(expected)
+
+
 def test_openai_runner_trigger(tmp_path: Path):
     prompts_dir = tmp_path / 'prompts'
     prompts_dir.mkdir()
@@ -896,6 +971,44 @@ def test_litellm_runner_without_api_key_env(tmp_path: Path):
         assert 'api_key' not in mock_completion.call_args.kwargs
 
     assert result.status == 'succeeded'
+
+
+def test_litellm_runner_extracts_cached_tokens(tmp_path: Path):
+    """LiteLLM normalizes to OpenAI shape; cached tokens flow through prompt_tokens_details."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'anthropic/claude-sonnet-4-5-20250514',
+            'max_tokens': '4096',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}', prompt_tokens=1000, completion_tokens=50)
+    mock_response.usage.prompt_tokens_details.cached_tokens = 800
+
+    fake_pricing = {
+        'claude-sonnet-4-5-20250514': {
+            'input_cost_per_token': 0.000003,
+            'output_cost_per_token': 0.000015,
+            'cache_read_input_token_cost': 0.0000003,
+        },
+    }
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response),
+        patch('engram.runners.litellm_api.load_pricing', return_value=fake_pricing),
+    ):
+        result = LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+    assert result.usage.prompt_tokens == 1000
+    assert result.usage.cache_read_tokens == 800
+    # find_rate's prefix-strip resolves `anthropic/claude-...` to the unprefixed pricing entry.
+    # 200 non-cached * 3e-6 + 800 read * 3e-7 + 50 output * 1.5e-5
+    expected = 200 * 3e-6 + 800 * 3e-7 + 50 * 1.5e-5
+    assert result.cost_usd == pytest.approx(expected)
 
 
 def test_litellm_runner_strips_provider_prefix_for_pricing(tmp_path: Path):

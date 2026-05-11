@@ -628,11 +628,48 @@ def test_score_experiment(tmp_path: Path):
 
     assert len(report.confusion_matrices) == 1
     assert report.cost_total_usd == pytest.approx(0.04)
+    # No cache tokens recorded → cache_hit_rate stays None so the display can hide the row.
+    assert report.cache_hit_rate is None
 
     # Labels fingerprint is populated from the dataset used at score time.
     assert len(report.labels_hash) == 64  # SHA256 hex digest
     assert report.labels_count == 3
     assert report.labels_scored_at
+
+
+def test_score_experiment_cache_hit_rate(tmp_path: Path):
+    """When results record cache_read_tokens, the report exposes the aggregate hit rate."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    # Rewrite results.json with non-zero cache_read_tokens on two of the three runs.
+    results_path = tmp_path / 'experiments' / experiment_id / 'results.json'
+    data = json.loads(results_path.read_text())
+    data['results'][0]['usage'] = {
+        'prompt_tokens': 1000,
+        'completion_tokens': 50,
+        'total_tokens': 1050,
+        'cache_read_tokens': 800,
+        'cache_creation_tokens': 0,
+    }
+    data['results'][1]['usage'] = {
+        'prompt_tokens': 1000,
+        'completion_tokens': 50,
+        'total_tokens': 1050,
+        'cache_read_tokens': 600,
+        'cache_creation_tokens': 0,
+    }
+    data['results'][2]['usage'] = {
+        'prompt_tokens': 1000,
+        'completion_tokens': 50,
+        'total_tokens': 1050,
+        'cache_read_tokens': 0,
+        'cache_creation_tokens': 200,
+    }
+    results_path.write_text(json.dumps(data))
+
+    report = score_experiment(tmp_path, experiment_id)
+    # (800 + 600 + 0) / (1000 + 1000 + 1000) = 1400 / 3000
+    assert report.cache_hit_rate == pytest.approx(1400 / 3000)
 
 
 def test_score_experiment_labels_hash_roundtrip(tmp_path: Path):

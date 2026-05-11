@@ -117,6 +117,8 @@ def _print_cost_table(report: EvalReport) -> None:
     table.add_row('Average', f'${report.cost_avg_usd:.4f}')
     table.add_row('Median', f'${report.cost_median_usd:.4f}')
     table.add_row('P95', f'${report.cost_p95_usd:.4f}')
+    if report.cache_hit_rate is not None:
+        table.add_row('Cache hit rate', f'{report.cache_hit_rate:.1%}')
 
     console.print(table)
     console.print()

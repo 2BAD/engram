@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 
-from engram.cost.pricing import find_rate, load_pricing
+from engram.cost.pricing import compute_cost, load_pricing
 from engram.models.config_snapshot import ConfigSnapshot
 from engram.models.run import RunResult, TokenUsage
 from engram.runners.base import Runner
@@ -72,11 +72,18 @@ class OpenAIApiRunner(Runner):
 
         latency = (time.monotonic() - start) * 1000
 
+        # OpenAI's prompt_tokens already includes cached tokens; prompt_tokens_details.cached_tokens
+        # is the subset that hit cache. OpenAI does not report a cache-creation count separately.
         u = response.usage
+        cache_read = 0
+        if u is not None:
+            details = getattr(u, 'prompt_tokens_details', None)
+            cache_read = _as_int(getattr(details, 'cached_tokens', 0))
         usage = TokenUsage(
             prompt_tokens=u.prompt_tokens if u else 0,
             completion_tokens=u.completion_tokens if u else 0,
             total_tokens=u.total_tokens if u else 0,
+            cache_read_tokens=cache_read,
         )
         cost_usd = self._compute_cost(model, usage)
 
@@ -107,8 +114,7 @@ class OpenAIApiRunner(Runner):
         """Compute USD cost from token usage using cached LiteLLM pricing data."""
         if self._pricing is None:
             self._pricing = load_pricing()
-        input_rate, output_rate = find_rate(self._pricing, model)
-        return usage.prompt_tokens * input_rate + usage.completion_tokens * output_rate
+        return compute_cost(self._pricing, model, usage)
 
     def snapshot_config(self, impl_config: ImplementationConfig, impl_dir: Path) -> ConfigSnapshot:
         """Capture model, prompts, and runner config."""
@@ -127,6 +133,11 @@ class OpenAIApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _as_int(value: object) -> int:
+    """Coerce SDK-reported numeric fields to int; treat anything else (None, MagicMock, ...) as 0."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _build_openai_content(input_data: InputData) -> str | list[dict[str, Any]]:
