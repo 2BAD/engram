@@ -48,13 +48,13 @@ def _pretty_for_echo(root: Path, experiment_id: str) -> str:
         return experiment_id
     try:
         metadata = json.loads(results_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return experiment_id
     decorate_with_short_ids([metadata], root)
     return linkify_ref(format_ref_long(metadata), root / 'experiments' / experiment_id)
 
 
-def pick_experiment_id(root: Path, limit: int = 10) -> str:
+def pick_experiment_id(root: Path, limit: int = 100) -> str:
     """Prompt the user to pick an experiment with arrow-key navigation; exits 1 if stdin isn't a TTY."""
     if not is_interactive():
         console.print('[red]No experiment ID provided and stdin is not interactive.[/red]')
@@ -68,7 +68,7 @@ def pick_experiment_id(root: Path, limit: int = 10) -> str:
         raise typer.Exit(1) from None
 
 
-def pick_one_or_pair(root: Path, limit: int = 10) -> tuple[str, str | None]:
+def pick_one_or_pair(root: Path, limit: int = 100) -> tuple[str, str | None]:
     """Ask the user whether to analyze one or two experiments, then pick accordingly. Returns (id_a, id_b or None)."""
     if not is_interactive():
         console.print('[red]No experiment ID provided and stdin is not interactive.[/red]')
@@ -85,7 +85,7 @@ def pick_one_or_pair(root: Path, limit: int = 10) -> tuple[str, str | None]:
         raise typer.Exit(1) from None
 
 
-def pick_experiment_pair(root: Path, limit: int = 10) -> tuple[str, str]:
+def pick_experiment_pair(root: Path, limit: int = 100) -> tuple[str, str]:
     """Prompt the user to pick two experiments with checkbox navigation; exits 1 if stdin isn't a TTY."""
     if not is_interactive():
         console.print('[red]No experiment IDs provided and stdin is not interactive.[/red]')

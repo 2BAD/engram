@@ -38,7 +38,7 @@ def ask_dataset(root: Path) -> str:
     return questionary.select('Select dataset:', choices=datasets).unsafe_ask()
 
 
-def ask_experiment(root: Path, limit: int = 10) -> str:
+def ask_experiment(root: Path, limit: int = 100) -> str:
     """Arrow-key select from recent experiments. Returns the full experiment id."""
     entries = list_experiments(root)
     if not entries:
@@ -61,7 +61,7 @@ def ask_experiment(root: Path, limit: int = 10) -> str:
 _PAIR_SIZE = 2
 
 
-def ask_experiment_pair(root: Path, limit: int = 10) -> tuple[str, str]:
+def ask_experiment_pair(root: Path, limit: int = 100) -> tuple[str, str]:
     """Checkbox select of exactly two experiments. Returns (older, newer) by timestamp."""
     entries = list_experiments(root)
     if not entries:
