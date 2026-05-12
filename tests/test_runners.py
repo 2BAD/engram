@@ -48,13 +48,21 @@ def test_get_runner_unknown():
 
 def test_get_runner_litellm_friendly_error_when_extra_missing(monkeypatch: pytest.MonkeyPatch):
     """When the litellm extra isn't installed, requesting the runner points the user to the install command."""
+    import importlib  # noqa: PLC0415
+
     from engram.runners import registry  # noqa: PLC0415
 
-    monkeypatch.setattr(registry, '_LITELLM_AVAILABLE', False)
-    monkeypatch.setattr(registry, '_RUNNERS', {k: v for k, v in registry._RUNNERS.items() if k != 'litellm'})
+    real_import = importlib.import_module
+
+    def fake_import(name: str, *args, **kwargs):
+        if name == 'engram.runners.litellm_api':
+            raise ImportError("No module named 'litellm'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(registry.importlib, 'import_module', fake_import)
 
     with pytest.raises(ValueError, match=r'needs the optional `litellm` extra'):
-        registry.validate_runner_name('litellm')
+        registry.get_runner('litellm')
 
 
 # --- JSON parsing ---

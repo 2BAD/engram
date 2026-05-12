@@ -7,7 +7,6 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
 
 from engram.analysis.analyzer import (
     AnalysisResult,
@@ -160,6 +159,8 @@ def _display_analysis(
             payload['cost_usd'] = result.cost_usd
         print(json.dumps(payload, indent=2))
         return
+
+    from rich.markdown import Markdown  # noqa: PLC0415 - deferred to keep CLI startup fast
 
     if experiment_b:
         console.print(f'[bold]Analysis: {experiment_a} vs {experiment_b}[/bold]')

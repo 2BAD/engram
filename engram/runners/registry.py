@@ -1,54 +1,56 @@
-"""Runner registry: maps runner name strings to runner classes."""
+"""
+Runner registry: maps runner name strings to runner classes.
+
+Runner modules are imported on demand so that CLI startup (and any code path
+that only validates a name) doesn't pay the cost of pulling in anthropic,
+openai, litellm, etc.
+"""
 
 from __future__ import annotations
 
+import importlib
 from typing import TYPE_CHECKING
-
-from engram.runners.anthropic_agent import AnthropicAgentRunner
-from engram.runners.anthropic_api import AnthropicApiRunner
-from engram.runners.dynamiq import DynamiqRunner
-from engram.runners.openai_api import OpenAIApiRunner
 
 if TYPE_CHECKING:
     from engram.runners.base import Runner
 
-# LiteLLM is optional. litellm_api imports litellm at module load, so we guard
-# that import and only register the runner if it succeeded. validate_runner_name
-# returns an install hint when the runner is referenced without the extra.
-try:
-    from engram.runners.litellm_api import LiteLLMRunner
-
-    _LITELLM_AVAILABLE = True
-except ImportError:
-    _LITELLM_AVAILABLE = False
-
-
-_RUNNERS: dict[str, type[Runner]] = {
-    'anthropic': AnthropicApiRunner,
-    'anthropic-agent': AnthropicAgentRunner,
-    'dynamiq': DynamiqRunner,
-    'openai': OpenAIApiRunner,
+_RUNNER_SPECS: dict[str, tuple[str, str]] = {
+    'anthropic': ('engram.runners.anthropic_api', 'AnthropicApiRunner'),
+    'anthropic-agent': ('engram.runners.anthropic_agent', 'AnthropicAgentRunner'),
+    'dynamiq': ('engram.runners.dynamiq', 'DynamiqRunner'),
+    'openai': ('engram.runners.openai_api', 'OpenAIApiRunner'),
+    'litellm': ('engram.runners.litellm_api', 'LiteLLMRunner'),
 }
-if _LITELLM_AVAILABLE:
-    _RUNNERS['litellm'] = LiteLLMRunner
+
+_OPTIONAL_RUNNERS = {'litellm'}
 
 
 def get_runner(name: str) -> Runner:
     """Get a runner instance by name."""
     validate_runner_name(name)
-    return _RUNNERS[name]()
+    module_path, class_name = _RUNNER_SPECS[name]
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        if name in _OPTIONAL_RUNNERS:
+            raise ValueError(_optional_install_hint(name)) from exc
+        raise
+    return getattr(module, class_name)()
 
 
 def validate_runner_name(name: str) -> None:
     """Raise ValueError if `name` is not a registered runner."""
-    if name in _RUNNERS:
+    if name in _RUNNER_SPECS:
         return
-    if name == 'litellm' and not _LITELLM_AVAILABLE:
-        msg = (
+    available = ', '.join(sorted(_RUNNER_SPECS))
+    msg = f'Unknown runner "{name}". Available: {available}'
+    raise ValueError(msg)
+
+
+def _optional_install_hint(name: str) -> str:
+    if name == 'litellm':
+        return (
             'The "litellm" runner needs the optional `litellm` extra. '
             "Install: uv tool install 'engram[litellm]' --prerelease=allow --python 3.13"
         )
-        raise ValueError(msg)
-    available = ', '.join(sorted(_RUNNERS.keys()))
-    msg = f'Unknown runner "{name}". Available: {available}'
-    raise ValueError(msg)
+    return f'The "{name}" runner is not installed.'

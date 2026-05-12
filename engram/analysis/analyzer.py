@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import anthropic
-
 from engram.cost.pricing import find_rate, load_pricing
 
 if TYPE_CHECKING:
@@ -80,6 +78,8 @@ def call_llm(
 
 def _call_anthropic(model: str, system_prompt: str, user_message: str) -> AnalysisResult:
     """Call the Anthropic Messages API."""
+    import anthropic  # noqa: PLC0415 - deferred to keep CLI startup fast
+
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:
         msg = 'ANTHROPIC_API_KEY not set. Add it to .env or export it in your shell.'
