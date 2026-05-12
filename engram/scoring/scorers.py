@@ -65,7 +65,7 @@ def numeric_tolerance(tolerance: float = 0.1) -> Callable[[Any, Any], bool]:
     def _scorer(predicted: Any, expected: Any) -> bool:
         try:
             p, e = float(predicted), float(expected)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return False
         if e == 0:
             return p == 0

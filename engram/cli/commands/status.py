@@ -66,7 +66,7 @@ def _print_rich_status(project, workflows, implementations, datasets, baselines,
                 suffix = f' [dim](ref: {reference})[/dim]' if reference else ''
                 link = _link(root / 'implementations' / name, name)
                 console.print(f'  {link} ({impl.platform}/{impl.runner}){suffix}')
-            except OSError, KeyError:
+            except (OSError, KeyError):
                 console.print(f'  {name} (error loading)')
     else:
         console.print('[dim]Implementations: (none)[/dim]')
@@ -148,7 +148,7 @@ def _count_labeled(root, dataset_name: str, total: int) -> int:
     """Count inputs that have a matching entry in labels.json."""
     try:
         labels = load_dataset_labels(root, dataset_name)
-    except OSError, ValueError, TypeError:
+    except (OSError, ValueError, TypeError):
         return 0
     if not labels:
         return 0

@@ -48,7 +48,7 @@ def _pretty_for_echo(root: Path, experiment_id: str) -> str:
         return experiment_id
     try:
         metadata = json.loads(results_path.read_text())
-    except json.JSONDecodeError, OSError:
+    except (json.JSONDecodeError, OSError):
         return experiment_id
     decorate_with_short_ids([metadata], root)
     return linkify_ref(format_ref_long(metadata), root / 'experiments' / experiment_id)

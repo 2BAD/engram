@@ -1,5 +1,7 @@
 """Output mode detection and management for TTY vs JSON logging."""
 
+from __future__ import annotations
+
 import os
 import sys
 from dataclasses import dataclass

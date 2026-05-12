@@ -94,7 +94,7 @@ def _current_labels_hash(root: Path, dataset: str) -> str | None:
         return None
     try:
         labels = load_dataset_labels(root, dataset)
-    except json.JSONDecodeError, ValueError, TypeError, OSError:
+    except (json.JSONDecodeError, ValueError, TypeError, OSError):
         return None
     return compute_labels_hash(labels)
 
