@@ -56,15 +56,19 @@ class AnthropicApiRunner(Runner):
 
         client = anthropic.Anthropic(api_key=api_key, max_retries=5)
 
+        create_kwargs: dict[str, Any] = {
+            'model': model,
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+            'system': system_param,
+            'messages': [cast('MessageParam', {'role': 'user', 'content': user_content})],
+        }
+        # Extended thinking requires temperature=1 and max_tokens > thinking_budget.
+        create_kwargs.update(_optional_thinking_kwargs(rc))
+
         start = time.monotonic()
         try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_param,
-                messages=[cast('MessageParam', {'role': 'user', 'content': user_content})],
-            )
+            response = client.messages.create(**create_kwargs)
         except anthropic.APIError as e:
             latency = (time.monotonic() - start) * 1000
             return RunResult(input_file='', status='failed', latency_ms=latency, error=str(e))
@@ -150,6 +154,14 @@ class AnthropicApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _optional_thinking_kwargs(rc: dict[str, str]) -> dict[str, Any]:
+    """Extended-thinking kwarg from runner_config.thinking_budget, if set."""
+    raw = rc.get('thinking_budget')
+    if not raw:
+        return {}
+    return {'thinking': {'type': 'enabled', 'budget_tokens': int(raw)}}
 
 
 def _as_int(value: object) -> int:

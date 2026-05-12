@@ -81,6 +81,8 @@ runner_config:
   # Cache the system prompt across runs, ~90% off on cache hits.
   # Only worth turning on once the system prompt is past ~1024 tokens.
   # prompt_cache: "true"
+  # Extended thinking budget; requires temperature: "1" and max_tokens > thinking_budget.
+  # thinking_budget: "4096"
 
 config_management:
   mode: local
@@ -97,6 +99,9 @@ runner_config:
   max_tokens: "1024"
   # temperature 0 keeps scoring reproducible across re-runs.
   temperature: "0"
+  # GPT-5 / o-series reasoning controls. Forwarded only if set.
+  # reasoning_effort: minimal | low | medium | high
+  # verbosity: low | medium | high
 
 config_management:
   mode: local
@@ -118,6 +123,11 @@ runner_config:
   # prompt_cache forwards to Anthropic when the model is `anthropic/...`.
   # No-op for other providers; OpenAI auto-caches above ~1024 tokens anyway.
   # prompt_cache: "true"
+  # Provider-specific reasoning knobs; forwarded only when set.
+  # thinking_budget for `anthropic/...`; reasoning_effort + verbosity for `openai/...`.
+  # thinking_budget: "4096"
+  # reasoning_effort: high
+  # verbosity: low
 
 config_management:
   mode: local

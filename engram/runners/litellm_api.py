@@ -70,6 +70,10 @@ class LiteLLMRunner(Runner):
             'num_retries': 5,
             'drop_params': True,
         }
+        # Provider-specific knobs. drop_params=True strips them for providers
+        # that don't accept them.
+        completion_kwargs.update(_optional_reasoning_kwargs(rc))
+        completion_kwargs.update(_optional_thinking_kwargs(rc))
         if api_key is not None:
             completion_kwargs['api_key'] = api_key
 
@@ -165,6 +169,19 @@ class LiteLLMRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _optional_reasoning_kwargs(rc: dict[str, str]) -> dict[str, str]:
+    """GPT-5 / o-series reasoning fields from runner_config, if any."""
+    return {k: rc[k] for k in ('reasoning_effort', 'verbosity') if k in rc}
+
+
+def _optional_thinking_kwargs(rc: dict[str, str]) -> dict[str, Any]:
+    """Anthropic extended-thinking kwarg from runner_config.thinking_budget, if set."""
+    raw = rc.get('thinking_budget')
+    if not raw:
+        return {}
+    return {'thinking': {'type': 'enabled', 'budget_tokens': int(raw)}}
 
 
 def _as_int(value: object) -> int:

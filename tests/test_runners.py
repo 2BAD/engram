@@ -170,6 +170,60 @@ def test_api_runner_prompt_cache_off_sends_plain_string(tmp_path: Path):
         assert call_kwargs['system'] == 'prompt'
 
 
+def test_api_runner_forwards_thinking_budget(tmp_path: Path):
+    """thinking_budget gets wrapped into the thinking kwarg when set."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'claude-sonnet-4-5-20250514',
+            'max_tokens': '8192',
+            'temperature': '1',
+            'thinking_budget': '4096',
+        },
+    )
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.messages.create.call_args.kwargs
+        assert call_kwargs['thinking'] == {'type': 'enabled', 'budget_tokens': 4096}
+
+
+def test_api_runner_omits_thinking_when_unset(tmp_path: Path):
+    """The thinking kwarg is not sent when thinking_budget is absent."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_impl_config()
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"topic": "A"}')]
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.anthropic_api.anthropic.Anthropic') as mock_cls,
+        patch('engram.runners.anthropic_api.load_pricing', return_value=_FAKE_PRICING),
+    ):
+        mock_cls.return_value.messages.create.return_value = mock_response
+        AnthropicApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        assert 'thinking' not in mock_cls.return_value.messages.create.call_args.kwargs
+
+
 def test_api_runner_records_cost_without_cache(tmp_path: Path):
     """RunResult.cost_without_cache_usd is the counterfactual price at full input rate."""
     (tmp_path / 'prompts').mkdir()
@@ -775,6 +829,56 @@ def test_openai_runner_forwards_explicit_temperature(tmp_path: Path):
         assert call_kwargs['temperature'] == 0.5
 
 
+def test_openai_runner_forwards_reasoning_effort_and_verbosity(tmp_path: Path):
+    """reasoning_effort and verbosity pass through to the API when set."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config(
+        runner_config={
+            'api_key_env': 'OPENAI_API_KEY',
+            'model': 'gpt-5.4-mini',
+            'max_tokens': '4096',
+            'reasoning_effort': 'high',
+            'verbosity': 'low',
+        },
+    )
+    mock_response = _make_openai_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.openai_api.openai.OpenAI') as mock_cls,
+        patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
+    ):
+        mock_cls.return_value.chat.completions.create.return_value = mock_response
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
+        assert call_kwargs['reasoning_effort'] == 'high'
+        assert call_kwargs['verbosity'] == 'low'
+
+
+def test_openai_runner_omits_reasoning_effort_and_verbosity_when_unset(tmp_path: Path):
+    """Neither field is sent to the API when absent from runner_config."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_openai_impl_config()
+    mock_response = _make_openai_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.openai_api.openai.OpenAI') as mock_cls,
+        patch('engram.runners.openai_api.load_pricing', return_value=_OPENAI_FAKE_PRICING),
+    ):
+        mock_cls.return_value.chat.completions.create.return_value = mock_response
+        OpenAIApiRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_cls.return_value.chat.completions.create.call_args.kwargs
+        assert 'reasoning_effort' not in call_kwargs
+        assert 'verbosity' not in call_kwargs
+
+
 def test_openai_runner_requests_json_mode(tmp_path: Path):
     """trigger() must pass response_format={'type': 'json_object'}."""
     prompts_dir = tmp_path / 'prompts'
@@ -1114,6 +1218,81 @@ def test_litellm_runner_prompt_cache_flag_wraps_system_in_cache_block(tmp_path: 
                 },
             ],
         }
+
+
+def test_litellm_runner_forwards_reasoning_effort_and_verbosity(tmp_path: Path):
+    """reasoning_effort and verbosity pass through to litellm.completion when set."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'OPENAI_API_KEY',
+            'model': 'openai/gpt-5',
+            'max_tokens': '4096',
+            'reasoning_effort': 'minimal',
+            'verbosity': 'medium',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_completion.call_args.kwargs
+        assert call_kwargs['reasoning_effort'] == 'minimal'
+        assert call_kwargs['verbosity'] == 'medium'
+
+
+def test_litellm_runner_omits_reasoning_effort_and_verbosity_when_unset(tmp_path: Path):
+    """Neither field is sent to litellm.completion when absent from runner_config."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config()
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'GEMINI_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_completion.call_args.kwargs
+        assert 'reasoning_effort' not in call_kwargs
+        assert 'verbosity' not in call_kwargs
+
+
+def test_litellm_runner_forwards_thinking_budget(tmp_path: Path):
+    """thinking_budget gets wrapped into the thinking kwarg passed to litellm.completion."""
+    (tmp_path / 'prompts').mkdir()
+    (tmp_path / 'prompts' / 'system.md').write_text('prompt')
+
+    impl_config = _make_litellm_impl_config(
+        runner_config={
+            'api_key_env': 'ANTHROPIC_API_KEY',
+            'model': 'anthropic/claude-sonnet-4-5-20250514',
+            'max_tokens': '8192',
+            'temperature': '1',
+            'thinking_budget': '2048',
+        },
+    )
+    mock_response = _make_litellm_response('{"topic": "A"}')
+
+    with (
+        patch.dict('os.environ', {'ANTHROPIC_API_KEY': 'test-key'}),
+        patch('engram.runners.litellm_api.litellm.completion', return_value=mock_response) as mock_completion,
+        patch('engram.runners.litellm_api.load_pricing', return_value=_LITELLM_FAKE_PRICING),
+    ):
+        LiteLLMRunner().trigger(InputData(filename='test', text='input'), impl_config, tmp_path)
+
+        call_kwargs = mock_completion.call_args.kwargs
+        assert call_kwargs['thinking'] == {'type': 'enabled', 'budget_tokens': 2048}
 
 
 def test_litellm_runner_extracts_cached_tokens(tmp_path: Path):

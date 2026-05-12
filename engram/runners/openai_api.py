@@ -57,15 +57,19 @@ class OpenAIApiRunner(Runner):
 
         client = openai.OpenAI(api_key=api_key, max_retries=5)
 
+        create_kwargs: dict[str, Any] = {
+            'model': model,
+            'max_completion_tokens': max_tokens,
+            'temperature': temperature,
+            'response_format': {'type': 'json_object'},
+            'messages': cast('list[ChatCompletionMessageParam]', messages),
+        }
+        # GPT-5 / o-series only; older models reject these fields.
+        create_kwargs.update(_optional_reasoning_kwargs(rc))
+
         start = time.monotonic()
         try:
-            response = client.chat.completions.create(
-                model=model,
-                max_completion_tokens=max_tokens,
-                temperature=temperature,
-                response_format={'type': 'json_object'},
-                messages=cast('list[ChatCompletionMessageParam]', messages),
-            )
+            response = client.chat.completions.create(**create_kwargs)
         except openai.APIError as e:
             latency = (time.monotonic() - start) * 1000
             return RunResult(input_file='', status='failed', latency_ms=latency, error=str(e))
@@ -151,6 +155,11 @@ class OpenAIApiRunner(Runner):
             prompts=prompts,
             runner_config={k: v for k, v in impl_config.runner_config.items() if k != 'api_key_env'},
         )
+
+
+def _optional_reasoning_kwargs(rc: dict[str, str]) -> dict[str, str]:
+    """GPT-5 / o-series reasoning fields from runner_config, if any."""
+    return {k: rc[k] for k in ('reasoning_effort', 'verbosity') if k in rc}
 
 
 def _as_int(value: object) -> int:
