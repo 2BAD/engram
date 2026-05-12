@@ -45,26 +45,33 @@ def estimate_cost(
     # Load dataset inputs
     inputs = load_dataset_inputs(root, dataset_name)
 
-    # Estimate output tokens from historical data or default
-    avg_output_tokens = _estimate_output_tokens(root, implementation_name, dataset_name)
+    calibration = _load_calibration(root, implementation_name, dataset_name)
+    avg_output_tokens = calibration['avg_output_tokens']
+    hit_rate_used = calibration['cache_hit_rate']
 
     text_inputs = [inp for inp in inputs if not inp.is_binary]
     prompt_cache_on = _truthy(impl_config.runner_config.get('prompt_cache'))
     cache_active = prompt_cache_on and prompt_tokens >= _MIN_CACHEABLE_TOKENS and len(text_inputs) > 1
 
-    first_template_rate = cache_creation_rate if cache_active else input_rate
-    rest_template_rate = cache_read_rate if cache_active else input_rate
+    # Per-call expected template rate. With no empirical history we model the idealised pattern of
+    # one cold creation followed by N-1 warm reads. With history we use the recorded hit rate to
+    # split each call's template tokens between read and creation rates, which is closer to what
+    # real runs see once TTL eviction and prompt drift kick in.
+    template_rate_per_call = _expected_template_rate(
+        cache_active=cache_active,
+        n_calls=len(text_inputs),
+        input_rate=input_rate,
+        cache_read_rate=cache_read_rate,
+        cache_creation_rate=cache_creation_rate,
+        empirical_hit_rate=hit_rate_used,
+    )
 
-    # Estimate per-example cost. With prompt caching active, the first call pays the
-    # creation premium on the system prompt and every subsequent call reads from the
-    # cache; the per-example numbers below show the steady-state (warm cache) cost.
     examples = []
     total_template_cost = 0.0
     total_variable_cost = 0.0
-    for idx, inp in enumerate(text_inputs):
+    for inp in text_inputs:
         variable_tokens = _rough_token_count(inp.text or inp.text_for_display)
-        template_rate = first_template_rate if idx == 0 else rest_template_rate
-        template_cost = prompt_tokens * template_rate
+        template_cost = prompt_tokens * template_rate_per_call
         variable_cost = variable_tokens * input_rate + avg_output_tokens * output_rate
         total_template_cost += template_cost
         total_variable_cost += variable_cost
@@ -107,7 +114,11 @@ def estimate_cost(
         # Cost the same dataset would have run *without* the cache flag, so users can see the
         # estimated savings up front. Only emitted when caching is actually projected to activate.
         uncached_template = prompt_tokens * input_rate * len(text_inputs)
-        result['estimated_cost_without_cache_usd'] = round(uncached_template + total_variable_cost, 4)
+        without_cache = uncached_template + total_variable_cost
+        result['estimated_cost_without_cache_usd'] = round(without_cache, 4)
+        result['estimated_savings_usd'] = round(without_cache - total_cost, 4)
+        if hit_rate_used is not None:
+            result['cache_hit_rate_used'] = round(hit_rate_used, 4)
     return result
 
 
@@ -133,21 +144,50 @@ def _rough_token_count(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def _estimate_output_tokens(root: Path, implementation_name: str, dataset_name: str) -> int:
-    """Estimate output tokens from historical experiments or use default."""
-    index = read_index(root)
+def _load_calibration(root: Path, implementation_name: str, dataset_name: str) -> dict[str, Any]:
+    """
+    Pull historical calibration data from the most recent matching index entry.
 
-    # Find past experiments with same implementation and dataset
+    Returns avg output tokens and (when available) the empirical cache hit rate. Either
+    field falls back to a default when no prior run carries it.
+    """
+    index = read_index(root)
     matching = [
         entry
         for entry in index
         if entry.get('implementation') == implementation_name and entry.get('dataset') == dataset_name
     ]
-
     if not matching:
-        return DEFAULT_OUTPUT_TOKENS
+        return {'avg_output_tokens': DEFAULT_OUTPUT_TOKENS, 'cache_hit_rate': None}
 
-    # Use the most recent experiment's average
     latest = matching[-1]
-    # If we had token data in the index, we'd use it; for now, use default
-    return latest.get('avg_output_tokens', DEFAULT_OUTPUT_TOKENS)
+    cost = latest.get('cost') or {}
+    return {
+        'avg_output_tokens': latest.get('avg_output_tokens', DEFAULT_OUTPUT_TOKENS),
+        'cache_hit_rate': cost.get('cache_hit_rate'),
+    }
+
+
+def _expected_template_rate(
+    cache_active: bool,
+    n_calls: int,
+    input_rate: float,
+    cache_read_rate: float,
+    cache_creation_rate: float,
+    empirical_hit_rate: float | None,
+) -> float:
+    """
+    Per-token rate for the cached prompt template, averaged across one run of the dataset.
+
+    Without cache: pay the full input rate every call.
+    With cache + no history: model one creation up front and (n-1) reads (the idealised pattern).
+    With cache + history: blend read and creation rates by the empirical hit rate.
+    """
+    if not cache_active:
+        return input_rate
+
+    if empirical_hit_rate is not None:
+        h = max(0.0, min(1.0, empirical_hit_rate))
+        return h * cache_read_rate + (1 - h) * cache_creation_rate
+
+    return (cache_creation_rate + (n_calls - 1) * cache_read_rate) / n_calls

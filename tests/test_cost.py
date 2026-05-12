@@ -384,6 +384,47 @@ def test_estimate_projects_cache_savings(tmp_path: Path):
     assert actual_savings == pytest.approx(expected_savings, rel=0.1)
 
 
+def test_estimate_emits_savings_field_alongside_without_cache(tmp_path: Path):
+    """`estimated_savings_usd` mirrors the (without_cache - cached) delta so the CLI doesn't recompute it."""
+    _setup_cache_estimator_project(tmp_path)
+
+    with patch('engram.cost.estimator.load_pricing', return_value=_CACHE_ESTIMATOR_PRICING):
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    expected = result['estimated_cost_without_cache_usd'] - result['total_estimated_cost_usd']
+    assert result['estimated_savings_usd'] == pytest.approx(expected, abs=0.0001)
+    assert result['estimated_savings_usd'] > 0
+
+
+def test_estimate_uses_historical_cache_hit_rate(tmp_path: Path):
+    """A prior run's cache_hit_rate is used to weight the per-call template rate, and the rate appears
+    in the result so the user knows the projection was calibrated."""
+    _setup_cache_estimator_project(tmp_path)
+
+    # Prior run on the same impl/dataset with a deliberately low hit rate.
+    index_entry = {
+        'id': 'prior-exp',
+        'implementation': 'classify-api',
+        'dataset': 'test-ds',
+        'timestamp': '2026-04-04T12:00:00Z',
+        'avg_output_tokens': 200,
+        'cost': {'cache_hit_rate': 0.5},
+    }
+    (tmp_path / 'experiments' / 'experiments.jsonl').write_text(json.dumps(index_entry) + '\n')
+
+    with patch('engram.cost.estimator.load_pricing', return_value=_CACHE_ESTIMATOR_PRICING):
+        result = estimate_cost(tmp_path, 'classify-api', 'test-ds')
+
+    assert result['cache_hit_rate_used'] == 0.5
+    # At H=0.5 the template rate per call is 0.5*read + 0.5*creation = 0.5*0.0000003 + 0.5*0.00000375
+    # = 0.000002025, so 3 calls * 1250 tokens at that rate = 0.00759375 template cost.
+    expected_template_cost = 3 * 1250 * (0.5 * 0.0000003 + 0.5 * 0.00000375)
+    # Variable cost is 3 calls * (1 token in + 200 tokens out) at the published rates.
+    expected_variable_cost = 3 * (1 * 0.000003 + 200 * 0.000015)
+    expected_total = round(expected_template_cost + expected_variable_cost, 4)
+    assert result['total_estimated_cost_usd'] == pytest.approx(expected_total)
+
+
 def test_estimate_skips_cache_projection_below_threshold(tmp_path: Path):
     """A prompt under 1024 tokens leaves caching off in the estimate and warns the user."""
     _setup_estimator_project(tmp_path)  # short prompt, well below 1024 tokens
@@ -397,6 +438,20 @@ def test_estimate_skips_cache_projection_below_threshold(tmp_path: Path):
 
     assert 'estimated_cost_without_cache_usd' not in result
     assert any('prompt_cache is enabled but no savings projected' in w for w in result['warnings'])
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_estimate_command_renders_savings_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When caching is projected to activate, the Rich table includes Without-cache and Saved rows."""
+    _setup_cache_estimator_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    with patch('engram.cost.estimator.load_pricing', return_value=_CACHE_ESTIMATOR_PRICING):
+        result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['estimate', 'classify-api', '--dataset', 'test-ds'])
+
+    assert result.exit_code == 0
+    assert 'Without cache' in result.output
+    assert 'Saved' in result.output
 
 
 def test_estimate_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

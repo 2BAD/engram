@@ -67,4 +67,16 @@ def estimate_command(
     table.add_row('Output rate', f'${result["output_rate_per_token"]:.8f}/token')
     table.add_row('Total estimated', f'[bold]${result["total_estimated_cost_usd"]:.4f}[/bold]')
 
+    if 'estimated_cost_without_cache_usd' in result:
+        without_cache = result['estimated_cost_without_cache_usd']
+        saved = result['estimated_savings_usd']
+        pct = saved / without_cache if without_cache else 0.0
+        table.add_row('Without cache', f'${without_cache:.4f}')
+        if saved >= 0:
+            table.add_row('Saved', f'[green]${saved:.4f} ({pct:.1%})[/green]')
+        else:
+            table.add_row('Saved', f'[red]-${abs(saved):.4f} ({abs(pct):.1%} overhead)[/red]')
+        if 'cache_hit_rate_used' in result:
+            table.add_row('Hit rate (calibrated)', f'{result["cache_hit_rate_used"]:.1%}')
+
     console.print(table)
