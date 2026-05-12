@@ -10,7 +10,6 @@ from engram.cost.pricing import find_cache_rates, find_rate, load_pricing
 from engram.datasets.loader import load_dataset_inputs
 from engram.tracking.index import read_index
 
-DEFAULT_OUTPUT_TOKENS = 500
 # Below this threshold Anthropic silently ignores cache_control markers and OpenAI's auto-cache doesn't
 # activate, so the estimator projects no cache savings even when prompt_cache is on. (Anthropic Haiku
 # actually needs 2048 tokens; we use the lower Sonnet/Opus number conservatively here, accepting that
@@ -26,12 +25,12 @@ def estimate_cost(
     """
     Estimate cost for running an implementation against a dataset.
 
-    Returns a dict with per-example and total estimates.
+    Input-side cost is always computed. Output-side cost (and the total) are None when no
+    prior run is available to calibrate ``avg_output_tokens``.
     """
     impl_config = load_implementation(root, implementation_name)
     impl_dir = root / 'implementations' / implementation_name
 
-    # Load pricing, applying any project-level overrides from engram.yaml.
     project = load_project(root)
     pricing = load_pricing(overrides=project.pricing_overrides)
 
@@ -39,24 +38,18 @@ def estimate_cost(
     input_rate, output_rate = find_rate(pricing, model)
     cache_creation_rate, cache_read_rate = find_cache_rates(pricing, model)
 
-    # Load prompt tokens (fixed cost per run)
     prompt_tokens = _count_prompt_tokens(impl_dir)
-
-    # Load dataset inputs
     inputs = load_dataset_inputs(root, dataset_name)
 
     calibration = _load_calibration(root, implementation_name, dataset_name)
     avg_output_tokens = calibration['avg_output_tokens']
     hit_rate_used = calibration['cache_hit_rate']
+    output_estimable = avg_output_tokens is not None
 
     text_inputs = [inp for inp in inputs if not inp.is_binary]
     prompt_cache_on = _truthy(impl_config.runner_config.get('prompt_cache'))
     cache_active = prompt_cache_on and prompt_tokens >= _MIN_CACHEABLE_TOKENS and len(text_inputs) > 1
 
-    # Per-call expected template rate. With no empirical history we model the idealised pattern of
-    # one cold creation followed by N-1 warm reads. With history we use the recorded hit rate to
-    # split each call's template tokens between read and creation rates, which is closer to what
-    # real runs see once TTL eviction and prompt drift kick in.
     template_rate_per_call = _expected_template_rate(
         cache_active=cache_active,
         n_calls=len(text_inputs),
@@ -68,27 +61,39 @@ def estimate_cost(
 
     examples = []
     total_template_cost = 0.0
-    total_variable_cost = 0.0
+    total_variable_input_cost = 0.0
+    total_output_cost = 0.0
     for inp in text_inputs:
         variable_tokens = _rough_token_count(inp.text or inp.text_for_display)
         template_cost = prompt_tokens * template_rate_per_call
-        variable_cost = variable_tokens * input_rate + avg_output_tokens * output_rate
+        variable_input_cost = variable_tokens * input_rate
+        output_cost = avg_output_tokens * output_rate if output_estimable else 0.0
+
         total_template_cost += template_cost
-        total_variable_cost += variable_cost
+        total_variable_input_cost += variable_input_cost
+        total_output_cost += output_cost
+
         examples.append(
             {
                 'input_file': inp.filename,
                 'estimated_input_tokens': prompt_tokens + variable_tokens,
                 'estimated_output_tokens': avg_output_tokens,
-                'estimated_cost_usd': round(template_cost + variable_cost, 6),
+                'estimated_cost_usd': (
+                    round(template_cost + variable_input_cost + output_cost, 6) if output_estimable else None
+                ),
             }
         )
 
-    total_cost = total_template_cost + total_variable_cost
+    total_input_cost = total_template_cost + total_variable_input_cost
 
     warnings: list[str] = []
     if any(inp.is_binary for inp in inputs):
         warnings.append('Dataset contains binary inputs (images/PDFs) whose token cost cannot be reliably estimated.')
+    if not output_estimable:
+        warnings.append(
+            'No prior run for this implementation/dataset; output token count cannot be estimated. '
+            'Run once (e.g. `engram run -n 1`) to calibrate.'
+        )
     if prompt_cache_on and not cache_active:
         reason = (
             f'system prompt is below the {_MIN_CACHEABLE_TOKENS}-token minimum'
@@ -106,17 +111,21 @@ def estimate_cost(
         'prompt_template_tokens': prompt_tokens,
         'avg_output_tokens': avg_output_tokens,
         'total_examples': len(inputs),
-        'total_estimated_cost_usd': round(total_cost, 4),
+        'estimated_input_cost_usd': round(total_input_cost, 4),
+        'estimated_output_cost_usd': round(total_output_cost, 4) if output_estimable else None,
+        'total_estimated_cost_usd': round(total_input_cost + total_output_cost, 4) if output_estimable else None,
         'warnings': warnings,
         'examples': examples,
     }
     if cache_active:
-        # Cost the same dataset would have run *without* the cache flag, so users can see the
-        # estimated savings up front. Only emitted when caching is actually projected to activate.
-        uncached_template = prompt_tokens * input_rate * len(text_inputs)
-        without_cache = uncached_template + total_variable_cost
-        result['estimated_cost_without_cache_usd'] = round(without_cache, 4)
-        result['estimated_savings_usd'] = round(without_cache - total_cost, 4)
+        # Savings are input-side only, so they're reportable without output calibration; the
+        # without-cache total is only meaningful when output is known.
+        uncached_template_cost = prompt_tokens * input_rate * len(text_inputs)
+        savings = uncached_template_cost - total_template_cost
+        result['estimated_savings_usd'] = round(savings, 4)
+        if output_estimable:
+            without_cache_total = uncached_template_cost + total_variable_input_cost + total_output_cost
+            result['estimated_cost_without_cache_usd'] = round(without_cache_total, 4)
         if hit_rate_used is not None:
             result['cache_hit_rate_used'] = round(hit_rate_used, 4)
     return result
@@ -145,12 +154,7 @@ def _rough_token_count(text: str) -> int:
 
 
 def _load_calibration(root: Path, implementation_name: str, dataset_name: str) -> dict[str, Any]:
-    """
-    Pull historical calibration data from the most recent matching index entry.
-
-    Returns avg output tokens and (when available) the empirical cache hit rate. Either
-    field falls back to a default when no prior run carries it.
-    """
+    """Pull avg_output_tokens and cache_hit_rate from the latest matching index entry; either may be None."""
     index = read_index(root)
     matching = [
         entry
@@ -158,12 +162,12 @@ def _load_calibration(root: Path, implementation_name: str, dataset_name: str) -
         if entry.get('implementation') == implementation_name and entry.get('dataset') == dataset_name
     ]
     if not matching:
-        return {'avg_output_tokens': DEFAULT_OUTPUT_TOKENS, 'cache_hit_rate': None}
+        return {'avg_output_tokens': None, 'cache_hit_rate': None}
 
     latest = matching[-1]
     cost = latest.get('cost') or {}
     return {
-        'avg_output_tokens': latest.get('avg_output_tokens', DEFAULT_OUTPUT_TOKENS),
+        'avg_output_tokens': latest.get('avg_output_tokens'),
         'cache_hit_rate': cost.get('cache_hit_rate'),
     }
 
