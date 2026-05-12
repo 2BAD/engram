@@ -78,7 +78,7 @@ def call_llm(
 
 def _call_anthropic(model: str, system_prompt: str, user_message: str) -> AnalysisResult:
     """Call the Anthropic Messages API."""
-    import anthropic  # noqa: PLC0415 - deferred to keep CLI startup fast
+    import anthropic  # noqa: PLC0415
 
     api_key = os.environ.get('ANTHROPIC_API_KEY')
     if not api_key:

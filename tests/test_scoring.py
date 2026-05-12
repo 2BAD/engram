@@ -913,6 +913,17 @@ def test_score_experiment_aggregates_tokens_and_no_cache_total(tmp_path: Path):
     assert report.cost_without_cache_total_usd > report.cost_total_usd
 
 
+def test_score_experiment_successful_calls_is_run_count_not_match_count(tmp_path: Path):
+    """successful_calls stays equal to the succeeded-run count even when no labels match."""
+    experiment_id = _setup_scored_project(tmp_path)
+    (tmp_path / 'datasets' / 'test-ds' / 'labels.json').write_text('{}')
+
+    report = score_experiment(tmp_path, experiment_id)
+
+    assert report.matched_examples == 0
+    assert report.successful_calls == 3
+
+
 @pytest.mark.usefixtures('rich_mode')
 def test_score_command_renders_tokens_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """When token data is recorded, the Tokens table renders with total + avg columns and the cache breakdown."""

@@ -160,7 +160,7 @@ def _display_analysis(
         print(json.dumps(payload, indent=2))
         return
 
-    from rich.markdown import Markdown  # noqa: PLC0415 - deferred to keep CLI startup fast
+    from rich.markdown import Markdown  # noqa: PLC0415
 
     if experiment_b:
         console.print(f'[bold]Analysis: {experiment_a} vs {experiment_b}[/bold]')

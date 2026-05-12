@@ -164,14 +164,8 @@ def _tokens_avg(total: int, calls: int) -> str:
 
 
 def _successful_call_count(report: EvalReport) -> int:
-    """
-    Recover the number of successful calls from the matched_examples and completion total.
-
-    Falls back to ``matched_examples`` when there's no usage data. Used only as a divisor for
-    per-call averages in the tokens table.
-    """
-    if report.matched_examples > 0:
-        return report.matched_examples
+    if report.successful_calls > 0:
+        return report.successful_calls
     return 1
 
 

@@ -1,10 +1,4 @@
-"""
-Runner registry: maps runner name strings to runner classes.
-
-Runner modules are imported on demand so that CLI startup (and any code path
-that only validates a name) doesn't pay the cost of pulling in anthropic,
-openai, litellm, etc.
-"""
+"""Runner registry: name -> runner class, with on-demand module imports."""
 
 from __future__ import annotations
 

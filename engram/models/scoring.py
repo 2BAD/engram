@@ -45,6 +45,8 @@ class EvalReport:
 
     experiment_id: str
     matched_examples: int = 0
+    # Count of runs with status='succeeded'. Divisor for per-call token and cost averages.
+    successful_calls: int = 0
     field_metrics: list[FieldMetrics] = field(default_factory=list)
     confusion_matrices: list[ConfusionMatrix] = field(default_factory=list)
     cost_total_usd: float = 0.0

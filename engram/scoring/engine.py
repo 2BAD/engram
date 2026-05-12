@@ -34,6 +34,7 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
     return EvalReport(
         experiment_id=raw['experiment_id'],
         matched_examples=raw.get('matched_examples', 0),
+        successful_calls=raw.get('successful_calls', 0),
         field_metrics=[FieldMetrics(**fm) for fm in raw.get('field_metrics', [])],
         confusion_matrices=[ConfusionMatrix(**cm) for cm in raw.get('confusion_matrices', [])],
         cost_total_usd=raw.get('cost_total_usd', 0.0),
@@ -121,6 +122,7 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     return EvalReport(
         experiment_id=experiment_id,
         matched_examples=matched_examples,
+        successful_calls=len(successful),
         field_metrics=all_field_metrics,
         confusion_matrices=confusion_matrices,
         cost_total_usd=cost_total,
