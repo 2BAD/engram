@@ -14,6 +14,14 @@ uv tool upgrade engram                               # upgrade
 uv tool uninstall engram                             # remove
 ```
 
+For the `litellm` runner, install the optional extra:
+
+```sh
+uv tool install 'git+https://github.com/2BAD/engram[litellm]' --prerelease=allow --python 3.13
+```
+
+Why the flags: LiteLLM's wheels pin a bunch of deps to exact versions that fight engram's stack; the prerelease loosens them to ranges. They also cap `requires-python<3.14`. Both go away once 1.85 ships stable with 3.14 support.
+
 ## Quick start
 
 `engram init` scaffolds a runnable example: a `classify` workflow (topic + sentiment), **three** implementations (`classify-anthropic`, `classify-openai`, and `classify-litellm`) so you can compare platforms right away, and a tiny labeled `sample` dataset.

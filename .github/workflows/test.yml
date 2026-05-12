@@ -18,7 +18,7 @@ jobs:
         with:
           enable-cache: true
           activate-environment: true
-      - run: uv sync --dev
+      - run: uv sync --dev --extra litellm --prerelease=allow
       - run: poe lint
       - run: poe format-check
       - run: poe typecheck

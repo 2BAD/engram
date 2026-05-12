@@ -170,15 +170,14 @@ _TEMPLATES: dict[str, str] = {
     '.gitattributes': _GITATTRIBUTES,
     '.env.example': _ENV_EXAMPLE,
     'workflows/classify/workflow.yaml': _WORKFLOW_YAML,
-    # Three implementations of the same workflow so the project is ready for
-    # cross-platform comparison out of the box. Prompts are identical in all
-    # three so users can diverge them independently once they start iterating.
+    # Two implementations of the same workflow so users can compare platforms
+    # right away. Prompts start identical; diverge them as you iterate. The
+    # next-steps hint points to a third LiteLLM impl for users who install the
+    # optional extra.
     'implementations/classify-anthropic/implementation.yaml': _ANTHROPIC_IMPL_YAML,
     'implementations/classify-anthropic/prompts/system.md': _SYSTEM_PROMPT,
     'implementations/classify-openai/implementation.yaml': _OPENAI_IMPL_YAML,
     'implementations/classify-openai/prompts/system.md': _SYSTEM_PROMPT,
-    'implementations/classify-litellm/implementation.yaml': _LITELLM_IMPL_YAML,
-    'implementations/classify-litellm/prompts/system.md': _SYSTEM_PROMPT,
     'datasets/sample/dataset.yaml': _DATASET_YAML,
     'datasets/sample/inputs/001.txt': _INPUT_001,
     'datasets/sample/inputs/002.txt': _INPUT_002,
@@ -201,12 +200,9 @@ def init_command() -> None:
         path.write_text(content)
 
     console.print('[green]Initialized engram project with the classify example.[/green]')
-    console.print('Three implementations of the same workflow, for cross-platform comparison:')
+    console.print('Two implementations of the same workflow, for cross-platform comparison:')
     console.print('  [bold]classify-anthropic[/bold]: Anthropic Messages API')
     console.print('  [bold]classify-openai[/bold]:    OpenAI Chat Completions API')
-    console.print(
-        '  [bold]classify-litellm[/bold]:   LiteLLM (Gemini by default; change the model prefix to try another)'
-    )
     console.print()
     console.print('[bold]Next steps:[/bold]')
     console.print('  1. Add at least one API key: [cyan]cp .env.example .env[/cyan] and edit it')
@@ -214,6 +210,9 @@ def init_command() -> None:
     console.print('  3. Run the evals:')
     console.print('       [cyan]engram run classify-anthropic --dataset sample[/cyan]')
     console.print('       [cyan]engram run classify-openai --dataset sample[/cyan]')
-    console.print('       [cyan]engram run classify-litellm --dataset sample[/cyan]')
     console.print('  4. Score each run:    [cyan]engram score <experiment-id> --save[/cyan]')
     console.print('  5. Compare platforms: [cyan]engram compare <id-a> <id-b>[/cyan]')
+    console.print()
+    console.print(
+        '[dim]Want LiteLLM (Gemini, Bedrock, Groq, Ollama, ...)? Install the optional extra; see README.[/dim]'
+    )

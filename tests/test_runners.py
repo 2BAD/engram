@@ -46,6 +46,17 @@ def test_get_runner_unknown():
         get_runner('nonexistent')
 
 
+def test_get_runner_litellm_friendly_error_when_extra_missing(monkeypatch: pytest.MonkeyPatch):
+    """When the litellm extra isn't installed, requesting the runner points the user to the install command."""
+    from engram.runners import registry  # noqa: PLC0415
+
+    monkeypatch.setattr(registry, '_LITELLM_AVAILABLE', False)
+    monkeypatch.setattr(registry, '_RUNNERS', {k: v for k, v in registry._RUNNERS.items() if k != 'litellm'})
+
+    with pytest.raises(ValueError, match=r'needs the optional `litellm` extra'):
+        registry.validate_runner_name('litellm')
+
+
 # --- JSON parsing ---
 
 

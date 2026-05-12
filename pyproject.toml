@@ -6,23 +6,34 @@ readme = "README.md"
 authors = [
     { name = "Jason Hyde", email = "github@2bad.me" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "anthropic>=0.100.0",
     "httpx>=0.28.1",
-    "litellm>=1.83.14",
     "openai>=2.36.0",
-    "python-dotenv>=1.0.0",
     "pyyaml>=6.0.3",
     "questionary>=2.1.1",
     "rich>=15.0.0",
     "typer>=0.25.1",
 ]
 
-# LiteLLM's wheel caps requires-python at <3.14, but it imports and runs fine
-# on 3.14. Override the metadata to get past uv's resolver. uv treats the
-# override as a full replacement, so requires-dist has to re-list LiteLLM's
-# runtime deps. Upstream pins exact versions; we don't.
+# LiteLLM is opt-in because the published stable (1.83.14) pins click, openai,
+# tiktoken, jinja2 and friends to exact versions that fight our top-level deps
+# (typer needs click>=8.2.1, etc.). 1.85.0.devN loosened all of them to ranges,
+# so the extra installs cleanly on the prerelease. Until 1.85 cuts stable, the
+# extra needs `--prerelease allow`.
+[project.optional-dependencies]
+litellm = [
+    "litellm>=1.85.0.dev2",
+    "python-dotenv>=1.0.0",
+]
+
+# LiteLLM's wheel caps requires-python at <3.14 (stable and prerelease), but it
+# imports and runs fine on 3.14. The override gets `uv sync --extra litellm`
+# past the resolver locally. uv treats the override as a full replacement, so
+# requires-dist has to re-list LiteLLM's runtime deps. The override only
+# applies to this project; downstream `uv tool install` doesn't see it, so
+# external 3.14 users still need `--python 3.13` until litellm supports 3.14.
 [[tool.uv.dependency-metadata]]
 name = "litellm"
 requires-python = ">=3.10"
