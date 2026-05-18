@@ -16,7 +16,7 @@ from engram.scoring.metrics import (
     compute_cost_stats,
     compute_field_metrics,
 )
-from engram.scoring.registry import resolve_scorer
+from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
 from engram.scoring.scorers import (
     contains,
     contains_all,
@@ -1075,3 +1075,61 @@ def test_score_save_notes_drift_when_labels_changed(tmp_path: Path, monkeypatch:
     assert second.exit_code == 0
     assert 'Labels changed since last score' in second.output
     assert 'Saved eval report' in second.output
+
+
+# --- Scorer signature widening (input_data threading) ---
+
+
+def test_scorer_accepts_input_data_recognises_kwarg():
+    def with_input(predicted, expected, *, input_data=None):
+        _ = (predicted, expected, input_data)
+        return True
+
+    assert scorer_accepts_input_data(with_input)
+    assert not scorer_accepts_input_data(exact_match)
+    assert not scorer_accepts_input_data(fuzzy_match(0.8))
+
+
+def test_score_experiment_passes_input_data_to_scorer(tmp_path: Path):
+    """A custom scorer declaring input_data receives the matching InputData per result."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    wf_dir = tmp_path / 'workflows' / 'classify'
+    (wf_dir / 'workflow.yaml').write_text(
+        'name: classify\n'
+        'output:\n'
+        '  fields:\n'
+        '    topic:\n'
+        '      type: enum\n'
+        '      values: [A, B, C]\n'
+        'scorers:\n'
+        '  topic: scorers.judge_topic\n'
+    )
+    (wf_dir / 'scorers.py').write_text(
+        'def judge_topic(predicted, expected, *, input_data=None):\n'
+        '    if input_data is None:\n'
+        '        return False\n'
+        '    return input_data.text == f"text-{input_data.filename}"\n'
+    )
+
+    inputs_dir = tmp_path / 'datasets' / 'test-ds' / 'inputs'
+    inputs_dir.mkdir(parents=True)
+    for fname in ('001.txt', '002.txt', '003.txt'):
+        (inputs_dir / fname).write_text(f'text-{fname}')
+
+    report = score_experiment(tmp_path, experiment_id)
+    topic = next(fm for fm in report.field_metrics if fm.field_name == 'topic')
+    assert topic.total == 3
+    assert topic.correct == 3
+
+
+def test_score_experiment_skips_input_load_when_no_scorer_needs_it(tmp_path: Path):
+    """No scorer asks for input_data, so the inputs directory is never read."""
+    experiment_id = _setup_scored_project(tmp_path)
+
+    # _setup_scored_project never creates datasets/test-ds/inputs/. load_dataset_inputs would raise
+    # FileNotFoundError if invoked, so completing the score proves the load was skipped.
+    assert not (tmp_path / 'datasets' / 'test-ds' / 'inputs').exists()
+
+    report = score_experiment(tmp_path, experiment_id)
+    assert report.matched_examples == 3

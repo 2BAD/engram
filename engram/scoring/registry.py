@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import re
 import threading
 from collections.abc import Callable
@@ -88,6 +89,23 @@ def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any
 
     msg = f'Unknown scorer "{name}"'
     raise ValueError(msg)
+
+
+def scorer_accepts_input_data(fn: Callable[..., Any]) -> bool:
+    """
+    Whether a scorer accepts an ``input_data`` keyword argument.
+
+    Scorers default to the two-arg ``(predicted, expected) -> bool`` contract.
+    Scorers that need the original input (e.g. an LLM judge grading a summary
+    against its source) declare a third ``input_data`` parameter; the engine
+    inspects each scorer with this helper and passes the input through when set.
+    Inspection failures (built-ins, C extensions) fall back to two-arg calling.
+    """
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return False
+    return 'input_data' in sig.parameters
 
 
 def _parse_arg(value: str) -> bool | float | str:

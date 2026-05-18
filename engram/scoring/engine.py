@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from engram.config.loader import load_implementation, load_workflow
-from engram.datasets.loader import compute_labels_hash, load_dataset_labels
+from engram.datasets.loader import compute_labels_hash, load_dataset_inputs, load_dataset_labels
 from engram.eval.results import load_results
 from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
 from engram.scoring.metrics import (
@@ -17,9 +17,10 @@ from engram.scoring.metrics import (
     compute_cost_stats,
     compute_field_metrics,
 )
-from engram.scoring.registry import resolve_scorer
+from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
 
 if TYPE_CHECKING:
+    from engram.models.input import InputData
     from engram.models.run import RunResult
 
 
@@ -69,9 +70,15 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     labels = load_dataset_labels(root, metadata['dataset'])
     resolved_scorers = {name: resolve_scorer(scorer, workflow_dir) for name, scorer in wf.scorers.items()}
 
+    # Load dataset inputs only when at least one scorer asks for them (e.g. an LLM judge that
+    # grades a summary against its source). Avoids reading binary files into memory otherwise.
+    inputs_by_filename: dict[str, InputData] = {}
+    if any(scorer_accepts_input_data(fn) for fn in resolved_scorers.values()):
+        inputs_by_filename = {inp.filename: inp for inp in load_dataset_inputs(root, metadata['dataset'])}
+
     repeats = max((r.repeat_index for r in results), default=0) + 1
     field_scores, field_predictions, per_repeat_scores, predictions_by_input, matched_examples = _collect_scores(
-        results, labels, resolved_scorers
+        results, labels, resolved_scorers, inputs_by_filename
     )
 
     # A field gets per-class precision/recall/F1 only when the scorer is exact_match
@@ -161,6 +168,7 @@ def _collect_scores(
     results: list[RunResult],
     labels: dict[str, dict[str, Any]],
     scorers: dict[str, Any],
+    inputs_by_filename: dict[str, InputData],
 ) -> tuple[
     dict[str, list[bool]],
     dict[str, list[tuple[str, str]]],
@@ -202,6 +210,7 @@ def _collect_scores(
             field_predictions,
             per_repeat_scores,
             predictions_by_input,
+            inputs_by_filename.get(result.input_file),
         )
 
     return field_scores, field_predictions, per_repeat_scores, predictions_by_input, matched_examples
@@ -215,6 +224,7 @@ def _score_single_result(  # noqa: PLR0913 — internal helper that fans one res
     field_predictions: dict[str, list[tuple[str, str]]],
     per_repeat_scores: dict[str, dict[int, list[bool]]],
     predictions_by_input: dict[str, dict[str, list[str]]],
+    input_data: InputData | None,
 ) -> None:
     """Apply scorers to a single result against its labels."""
     for field_name, scorer_fn in scorers.items():
@@ -224,7 +234,11 @@ def _score_single_result(  # noqa: PLR0913 — internal helper that fans one res
         expected = example_labels[field_name]
         if predicted is None:
             continue
-        score = scorer_fn(predicted, expected)
+        score = (
+            scorer_fn(predicted, expected, input_data=input_data)
+            if scorer_accepts_input_data(scorer_fn)
+            else scorer_fn(predicted, expected)
+        )
         field_scores[field_name].append(score)
         field_predictions[field_name].append((str(expected), str(predicted)))
         per_repeat_scores[field_name].setdefault(result.repeat_index, []).append(score)
