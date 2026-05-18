@@ -24,6 +24,16 @@ class AnalysisResult:
     cost_usd: float
 
 
+@dataclass
+class LLMCallResult:
+    """Raw text + usage + cost from one LLM messages.create call."""
+
+    text: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+
+
 def estimate_analysis_cost(
     config: AnalysisConfig,
     system_prompt: str,
@@ -76,8 +86,20 @@ def call_llm(
     raise ValueError(msg)
 
 
-def _call_anthropic(model: str, system_prompt: str, user_message: str) -> AnalysisResult:
-    """Call the Anthropic Messages API."""
+def call_anthropic_messages(
+    model: str,
+    system_prompt: str,
+    user_message: str,
+    *,
+    max_tokens: int = 4096,
+    temperature: float = 0.0,
+) -> LLMCallResult:
+    """
+    Call the Anthropic Messages API and return text, usage, and cost.
+
+    Lower-level than call_llm: leaves response shaping to the caller so the explain/suggest path
+    can wrap text as markdown while the LLM judge scorer parses the same text as JSON.
+    """
     import anthropic  # noqa: PLC0415
 
     api_key = os.environ.get('ANTHROPIC_API_KEY')
@@ -88,7 +110,8 @@ def _call_anthropic(model: str, system_prompt: str, user_message: str) -> Analys
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=max_tokens,
+        temperature=temperature,
         system=system_prompt,
         messages=[{'role': 'user', 'content': user_message}],
     )
@@ -101,10 +124,16 @@ def _call_anthropic(model: str, system_prompt: str, user_message: str) -> Analys
     input_rate, output_rate = find_rate(pricing, model)
     cost = input_tokens * input_rate + output_tokens * output_rate
 
+    return LLMCallResult(text=text, input_tokens=input_tokens, output_tokens=output_tokens, cost_usd=cost)
+
+
+def _call_anthropic(model: str, system_prompt: str, user_message: str) -> AnalysisResult:
+    """Call the Anthropic Messages API and wrap as an AnalysisResult."""
+    call = call_anthropic_messages(model, system_prompt, user_message)
     return AnalysisResult(
-        markdown=text,
+        markdown=call.text,
         model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost,
+        input_tokens=call.input_tokens,
+        output_tokens=call.output_tokens,
+        cost_usd=call.cost_usd,
     )
