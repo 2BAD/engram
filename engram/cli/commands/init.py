@@ -42,7 +42,7 @@ GEMINI_API_KEY=
 
 _WORKFLOW_YAML = """\
 name: classify
-description: Classify support conversations by topic and sentiment
+description: Classify support conversations and extract the customer's key statement
 
 input:
   type: text
@@ -58,10 +58,23 @@ output:
       type: enum
       values: [positive, negative, neutral]
       description: Customer tone
+    key_quote:
+      type: string
+      description: The customer's most important sentence, copied verbatim or lightly paraphrased
 
+# Mix of scorers: exact_match for enums, llm_judge for the open-ended quote field
+# (paraphrasing breaks string equality but is fine for this task). The judge runs at
+# score time and costs a small Anthropic call per labeled example; see README.
 scorers:
   topic: exact_match
   sentiment: exact_match
+  key_quote:
+    type: llm_judge
+    criteria: |
+      Does the predicted quote capture the same point as the expected quote?
+      Wording can differ; small omissions are fine; meaning must match.
+    model: claude-sonnet-4-6
+    threshold: 0.7
 
 confusion_matrices:
   - topic
@@ -134,16 +147,17 @@ config_management:
 """
 
 _SYSTEM_PROMPT = """\
-You are a classifier for customer support conversations. Read the conversation
-and respond with a single JSON object containing exactly two fields:
+You read customer support conversations and produce a structured summary. Respond
+with a single JSON object containing exactly three fields:
 
 - "topic": one of "billing", "technical", or "feedback"
 - "sentiment": one of "positive", "negative", or "neutral"
+- "key_quote": the single sentence from the customer that best captures their main point
 
 Return only the JSON object with no surrounding prose or markdown fences.
 
 Example output:
-{"topic": "billing", "sentiment": "negative"}
+{"topic": "billing", "sentiment": "negative", "key_quote": "I was charged twice for my subscription this month."}
 """
 
 _DATASET_YAML = """\
@@ -168,9 +182,21 @@ Agent: Thank you so much for letting us know, I'll pass this along to the team.
 
 _LABELS_JSON = """\
 {
-  "001.txt": {"topic": "billing", "sentiment": "negative"},
-  "002.txt": {"topic": "technical", "sentiment": "neutral"},
-  "003.txt": {"topic": "feedback", "sentiment": "positive"}
+  "001.txt": {
+    "topic": "billing",
+    "sentiment": "negative",
+    "key_quote": "I was charged twice for my subscription this month."
+  },
+  "002.txt": {
+    "topic": "technical",
+    "sentiment": "neutral",
+    "key_quote": "The export button on the dashboard does nothing when I click it."
+  },
+  "003.txt": {
+    "topic": "feedback",
+    "sentiment": "positive",
+    "key_quote": "The new search feature is fantastic."
+  }
 }
 """
 
@@ -222,6 +248,9 @@ def init_command() -> None:
     console.print('       [cyan]engram run classify-openai --dataset sample[/cyan]')
     console.print('  4. Score each run:    [cyan]engram score <experiment-id> --save[/cyan]')
     console.print('  5. Compare platforms: [cyan]engram compare <id-a> <id-b>[/cyan]')
+    console.print()
+    console.print('[dim]The key_quote field is graded by an LLM judge — `engram score` will make a small[/dim]')
+    console.print('[dim]Anthropic call per example. Cached on disk, so re-scoring is free.[/dim]')
     console.print()
     console.print(
         '[dim]Want LiteLLM (Gemini, Bedrock, Groq, Ollama, ...)? Install the optional extra; see README.[/dim]'

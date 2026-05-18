@@ -98,6 +98,32 @@ def test_init_scaffolds_env_example(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert 'cp .env.example .env' in result.output
 
 
+def test_init_scaffold_wires_llm_judge_for_key_quote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The scaffolded workflow grades key_quote with llm_judge and resolves to a working scorer."""
+    from engram.config.loader import load_workflow  # noqa: PLC0415
+    from engram.scoring.llm_judge import JUDGE_STATE_ATTR  # noqa: PLC0415
+    from engram.scoring.registry import resolve_scorer  # noqa: PLC0415
+
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ['init'])
+
+    wf = load_workflow(tmp_path, 'classify')
+    assert 'key_quote' in wf.output_fields
+    spec = wf.scorers['key_quote']
+    assert isinstance(spec, dict)
+    assert spec['type'] == 'llm_judge'
+
+    scorer = resolve_scorer(spec)
+    # The resolved scorer is an llm_judge closure with JudgeState attached, so the engine
+    # can configure caching and aggregate cost without inspecting the spec itself.
+    assert hasattr(scorer, JUDGE_STATE_ATTR)
+
+    # Labels carry a key_quote per example so the judge has expected text to grade against.
+    labels = json.loads((tmp_path / 'datasets' / 'sample' / 'labels.json').read_text())
+    for filename, label in labels.items():
+        assert 'key_quote' in label, f'{filename}: missing key_quote label'
+
+
 def test_cli_loads_dotenv_from_project_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Running any engram command in a project populates os.environ from <root>/.env."""
     # Minimal project skeleton (no workflows needed — status tolerates an empty project).
