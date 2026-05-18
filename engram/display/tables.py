@@ -19,6 +19,7 @@ def print_eval_report(report: EvalReport) -> None:
     _print_metrics_table(report)
     _print_tokens_table(report)
     _print_cost_table(report)
+    _print_judging_table(report)
 
     for cm in report.confusion_matrices:
         _print_confusion_matrix(cm)
@@ -207,6 +208,26 @@ def _print_cost_table(report: EvalReport) -> None:
             table.add_row('Saved', f'[green]${saved:.4f} ({pct:.1%})[/green]')
         else:
             table.add_row('Saved', f'[red]-${abs(saved):.4f} ({abs(pct):.1%} overhead)[/red]')
+
+    console.print(table)
+    console.print()
+
+
+def _print_judging_table(report: EvalReport) -> None:
+    """Render scoring-time judge cost. Hidden when the workflow has no llm_judge scorers."""
+    if report.judging_calls <= 0:
+        return
+
+    table = Table(title='Judging')
+    table.add_column(Text('Metric', justify='center'), style='bold')
+    table.add_column(Text('Value', justify='center'), justify='right')
+
+    avg_cost = report.judging_cost_usd / report.judging_calls
+    table.add_row('Total cost', f'${report.judging_cost_usd:.4f}')
+    table.add_row('Per call', f'${avg_cost:.4f}')
+    table.add_row('Calls', f'{report.judging_calls:,}')
+    table.add_row('Input tokens', f'{report.judging_input_tokens:,}')
+    table.add_row('Output tokens', f'{report.judging_output_tokens:,}')
 
     console.print(table)
     console.print()

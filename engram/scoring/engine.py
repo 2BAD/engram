@@ -10,6 +10,7 @@ from engram.config.loader import load_implementation, load_workflow
 from engram.datasets.loader import compute_labels_hash, load_dataset_inputs, load_dataset_labels
 from engram.eval.results import load_results
 from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
+from engram.scoring.llm_judge import JUDGE_CALLS_ATTR
 from engram.scoring.metrics import (
     compute_accuracy_stdev,
     compute_agreement_metrics,
@@ -55,6 +56,10 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         labels_hash=raw.get('labels_hash', ''),
         labels_count=raw.get('labels_count', 0),
         labels_scored_at=raw.get('labels_scored_at', ''),
+        judging_cost_usd=raw.get('judging_cost_usd', 0.0),
+        judging_input_tokens=raw.get('judging_input_tokens', 0),
+        judging_output_tokens=raw.get('judging_output_tokens', 0),
+        judging_calls=raw.get('judging_calls', 0),
     )
 
 
@@ -126,6 +131,8 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     tokens_cache_creation = sum(r.usage.cache_creation_tokens for r in successful)
     tokens_completion = sum(r.usage.completion_tokens for r in successful)
 
+    judging_cost, judging_in_tokens, judging_out_tokens, judging_calls = _aggregate_judge_costs(resolved_scorers)
+
     return EvalReport(
         experiment_id=experiment_id,
         matched_examples=matched_examples,
@@ -148,8 +155,30 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
         cache_hit_rate=cache_hit_rate,
         labels_hash=compute_labels_hash(labels),
         labels_count=len(labels),
+        judging_cost_usd=judging_cost,
+        judging_input_tokens=judging_in_tokens,
+        judging_output_tokens=judging_out_tokens,
+        judging_calls=judging_calls,
         labels_scored_at=datetime.now(UTC).isoformat(),
     )
+
+
+def _aggregate_judge_costs(scorers: dict[str, Any]) -> tuple[float, int, int, int]:
+    """Sum LLMCallResult logs left behind by llm_judge scorers; non-judge scorers carry no attribute and are skipped."""
+    cost = 0.0
+    input_tokens = 0
+    output_tokens = 0
+    calls = 0
+    for scorer_fn in scorers.values():
+        log = getattr(scorer_fn, JUDGE_CALLS_ATTR, None)
+        if log is None:
+            continue
+        for call in log:
+            cost += call.cost_usd
+            input_tokens += call.input_tokens
+            output_tokens += call.output_tokens
+            calls += 1
+    return cost, input_tokens, output_tokens, calls
 
 
 def _compute_cache_hit_rate(results: list[RunResult]) -> float | None:

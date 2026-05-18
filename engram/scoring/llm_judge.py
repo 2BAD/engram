@@ -7,10 +7,15 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from engram.analysis.analyzer import call_anthropic_messages
+from engram.analysis.analyzer import LLMCallResult, call_anthropic_messages
 
 if TYPE_CHECKING:
     from engram.models.input import InputData
+
+
+# Public so the scoring engine can pull it off resolved judge scorers without an attribute
+# lookup string. Engine treats absence as "not a judge" and skips that scorer for cost rollup.
+JUDGE_CALLS_ATTR = '_judge_calls'
 
 
 _JUDGE_SYSTEM_PROMPT = (
@@ -43,6 +48,7 @@ def llm_judge(
     against the article it was drawn from). JSON parse failures conservatively score False —
     a judge that can't return parseable JSON shouldn't silently pass items.
     """
+    judge_calls: list[LLMCallResult] = []
 
     def _scorer(predicted: Any, expected: Any, *, input_data: InputData | None = None) -> bool:
         user_message = _build_user_message(criteria, predicted, expected, input_data, reference_free)
@@ -53,11 +59,14 @@ def llm_judge(
             max_tokens=max_tokens,
             temperature=0.0,
         )
+        judge_calls.append(call)
         score = _parse_score(call.text)
         if score is None:
             return False
         return score >= threshold
 
+    # Engine reads this attribute after scoring to aggregate judge cost into EvalReport.
+    setattr(_scorer, JUDGE_CALLS_ATTR, judge_calls)
     return _scorer
 
 

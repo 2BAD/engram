@@ -230,6 +230,39 @@ def test_append_to_index_omits_cache_fields_when_unused(tmp_path: Path):
     assert 'avg_cache_creation_tokens' not in entry
 
 
+def test_append_to_index_records_judging_when_present(tmp_path: Path):
+    """When llm_judge scorers ran during scoring, the index row carries a 'judging' block."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-judge', 'classify-api', 'test-ds', 'A')
+    report = EvalReport(
+        experiment_id='exp-judge',
+        field_metrics=[],
+        judging_cost_usd=0.0123,
+        judging_input_tokens=240,
+        judging_output_tokens=60,
+        judging_calls=3,
+    )
+    append_to_index(tmp_path, report)
+
+    entry = read_index(tmp_path)[0]
+    assert entry['judging'] == {
+        'cost_usd': 0.0123,
+        'calls': 3,
+        'input_tokens': 240,
+        'output_tokens': 60,
+    }
+
+
+def test_append_to_index_omits_judging_when_unused(tmp_path: Path):
+    """Workflows without llm_judge scorers leave no 'judging' key in the index row."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-no-judge', 'classify-api', 'test-ds', 'A')
+
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-no-judge', field_metrics=[]))
+    entry = read_index(tmp_path)[0]
+    assert 'judging' not in entry
+
+
 # --- resolve_experiment_id ---
 
 

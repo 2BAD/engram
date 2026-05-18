@@ -80,3 +80,11 @@ class EvalReport:
     labels_hash: str = ''
     labels_count: int = 0
     labels_scored_at: str = ''
+    # Aggregate cost of LLM-judge scorer calls across this scoring run. Separate from the
+    # workflow's run-time cost (cost_total_usd) because it accrues at score time and is
+    # incurred only when the workflow uses one or more llm_judge scorers. judging_calls
+    # is the divisor for per-call averages and stays at 0 for workflows with no judges.
+    judging_cost_usd: float = 0.0
+    judging_input_tokens: int = 0
+    judging_output_tokens: int = 0
+    judging_calls: int = 0

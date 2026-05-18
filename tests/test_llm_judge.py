@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from engram.analysis.analyzer import LLMCallResult
 from engram.models.input import InputData
-from engram.scoring.llm_judge import _parse_score, llm_judge
+from engram.scoring.llm_judge import JUDGE_CALLS_ATTR, _parse_score, llm_judge
 from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
 
 
@@ -125,3 +125,29 @@ def test_parse_score_rejects_out_of_range_or_wrong_type():
     assert _parse_score('{"score": true}') is None
     assert _parse_score('not json') is None
     assert _parse_score('{}') is None
+
+
+def test_llm_judge_attaches_call_log_for_engine_aggregation():
+    """Each judge invocation appends to a list the engine reads off the scorer attribute."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)):
+        scorer = llm_judge('criteria')
+        scorer('p1', 'e1')
+        scorer('p2', 'e2')
+        scorer('p3', 'e3')
+
+    log = getattr(scorer, JUDGE_CALLS_ATTR)
+    assert len(log) == 3
+    assert all(call.cost_usd == 0.0001 for call in log)
+
+
+def test_llm_judge_call_log_per_scorer_instance():
+    """Two scorers built from the same factory call must not share their logs."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)):
+        scorer_a = llm_judge('criteria a')
+        scorer_b = llm_judge('criteria b')
+        scorer_a('p', 'e')
+        scorer_a('p', 'e')
+        scorer_b('p', 'e')
+
+    assert len(getattr(scorer_a, JUDGE_CALLS_ATTR)) == 2
+    assert len(getattr(scorer_b, JUDGE_CALLS_ATTR)) == 1

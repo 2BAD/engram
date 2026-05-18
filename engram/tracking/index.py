@@ -92,6 +92,8 @@ def append_to_index(root: Path, report: EvalReport) -> None:
     if output_tokens:
         summary['avg_output_tokens'] = round(sum(output_tokens) / len(output_tokens))
 
+    _attach_judging_stats(summary, report)
+
     label = metadata.get('label')
     if label:
         summary['label'] = label
@@ -111,6 +113,18 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         for entry in existing:
             tmp.write(json.dumps(entry) + '\n')
     Path(tmp.name).replace(index_path)
+
+
+def _attach_judging_stats(summary: dict[str, Any], report: EvalReport) -> None:
+    """Fold scoring-time judge cost into a summary row, omitted when no llm_judge scorers ran."""
+    if report.judging_calls <= 0:
+        return
+    summary['judging'] = {
+        'cost_usd': round(report.judging_cost_usd, 4),
+        'calls': report.judging_calls,
+        'input_tokens': report.judging_input_tokens,
+        'output_tokens': report.judging_output_tokens,
+    }
 
 
 def _attach_cache_stats(summary: dict[str, Any], report: EvalReport, results: list[RunResult]) -> None:

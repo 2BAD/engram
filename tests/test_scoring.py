@@ -3,10 +3,12 @@
 import json
 from dataclasses import asdict
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
+from engram.analysis.analyzer import LLMCallResult
 from engram.cli import app
 from engram.scoring.engine import load_saved_report, score_experiment
 from engram.scoring.metrics import (
@@ -1079,6 +1081,33 @@ def test_score_command_renders_cost_breakdown(tmp_path: Path, monkeypatch: pytes
 
 
 @pytest.mark.usefixtures('rich_mode')
+def test_score_command_renders_judging_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When llm_judge scorers ran, the Judging table renders with cost, calls, and token totals."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    monkeypatch.chdir(tmp_path)
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake):
+        result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+
+    assert result.exit_code == 0
+    assert 'Judging' in result.output
+    assert 'Calls' in result.output
+    assert '$0.0030' in result.output  # 3 calls * 0.001
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_hides_judging_table_without_judges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Workflows without llm_judge scorers leave no Judging section in the score output."""
+    experiment_id = _setup_scored_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+    assert result.exit_code == 0
+    assert 'Judging' not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
 def test_score_command_hides_cost_breakdown_when_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Runs without per-bucket cost data show only the legacy total/avg/median/p95 rows."""
     experiment_id = _setup_scored_project(tmp_path)  # default results have no breakdown fields
@@ -1189,3 +1218,75 @@ def test_score_experiment_skips_input_load_when_no_scorer_needs_it(tmp_path: Pat
 
     report = score_experiment(tmp_path, experiment_id)
     assert report.matched_examples == 3
+
+
+# --- Judging cost rollup ---
+
+
+def _setup_judge_project(tmp_path: Path) -> str:
+    """Like _setup_scored_project but with an llm_judge scorer instead of exact_match."""
+    experiment_id = _setup_scored_project(tmp_path)
+    wf_path = tmp_path / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(
+        'name: classify\n'
+        'output:\n'
+        '  fields:\n'
+        '    topic:\n'
+        '      type: enum\n'
+        '      values: [A, B, C]\n'
+        'scorers:\n'
+        '  topic:\n'
+        '    type: llm_judge\n'
+        '    criteria: the topic letter is correct\n'
+        '    threshold: 0.5\n'
+    )
+    # llm_judge declares input_data, so the engine will load the dataset inputs.
+    inputs_dir = tmp_path / 'datasets' / 'test-ds' / 'inputs'
+    inputs_dir.mkdir(parents=True)
+    for fname in ('001.txt', '002.txt', '003.txt'):
+        (inputs_dir / fname).write_text(f'text-{fname}')
+    return experiment_id
+
+
+def test_score_experiment_aggregates_judging_cost(tmp_path: Path):
+    """One judge call per scored result; EvalReport carries the totals."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake):
+        report = score_experiment(tmp_path, experiment_id)
+
+    assert report.judging_calls == 3
+    assert report.judging_cost_usd == pytest.approx(0.003)
+    assert report.judging_input_tokens == 240
+    assert report.judging_output_tokens == 60
+
+
+def test_score_experiment_leaves_judging_at_zero_without_judges(tmp_path: Path):
+    """Workflows that don't use llm_judge keep the judging fields at their zero defaults."""
+    experiment_id = _setup_scored_project(tmp_path)
+    report = score_experiment(tmp_path, experiment_id)
+
+    assert report.judging_calls == 0
+    assert report.judging_cost_usd == 0.0
+    assert report.judging_input_tokens == 0
+    assert report.judging_output_tokens == 0
+
+
+def test_load_saved_report_round_trips_judging_fields(tmp_path: Path):
+    """eval.json carries the judging fields and load_saved_report restores them."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake):
+        report = score_experiment(tmp_path, experiment_id)
+
+    eval_path = tmp_path / 'experiments' / experiment_id / 'eval.json'
+    eval_path.write_text(json.dumps(asdict(report), indent=2))
+
+    restored = load_saved_report(tmp_path, experiment_id)
+    assert restored is not None
+    assert restored.judging_calls == 3
+    assert restored.judging_cost_usd == pytest.approx(0.003)
+    assert restored.judging_input_tokens == 240
+    assert restored.judging_output_tokens == 60
