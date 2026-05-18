@@ -52,15 +52,47 @@ def validate_scorer_name(name: str) -> None:
     raise ValueError(msg)
 
 
-def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any, Any], bool]:
+def validate_scorer_spec(spec: str | dict[str, Any]) -> None:
     """
-    Resolve a scorer name string to a callable.
+    Validate a scorer spec in either form.
 
-    Handles:
-    - Built-in scorers: "exact_match"
-    - Parameterized built-ins: "numeric_tolerance(0.1)"
-    - Custom scorers: "scorers.my_function" (loaded from workflow_dir/scorers.py)
+    The legacy string form (``"exact_match"`` or ``"fuzzy_match(0.9)"``) handles factories whose args
+    fit on one line. The dict form (``{type: llm_judge, criteria: ..., model: ..., threshold: 0.7}``)
+    is for scorers whose configuration is multi-line or named — the ``type`` value names the scorer
+    and the remaining keys become kwargs passed to the factory at resolve time.
     """
+    if isinstance(spec, dict):
+        if 'type' not in spec:
+            msg = f'Scorer dict must include a "type" key, got keys: {sorted(spec)}'
+            raise ValueError(msg)
+        validate_scorer_name(spec['type'])
+        return
+    if isinstance(spec, str):
+        validate_scorer_name(spec)
+        return
+    msg = f'Scorer spec must be a string or dict, got {type(spec).__name__}'
+    raise TypeError(msg)
+
+
+def resolve_scorer(spec: str | dict[str, Any], workflow_dir: Path | None = None) -> Callable[..., bool]:
+    """
+    Resolve a scorer spec (string or dict) to a callable.
+
+    String form handles:
+    - Built-in scorers: ``"exact_match"``
+    - Parameterized built-ins: ``"numeric_tolerance(0.1)"``
+    - Custom scorers: ``"scorers.my_function"`` (loaded from ``workflow_dir/scorers.py``)
+
+    Dict form handles factory scorers whose args don't fit a one-line string. ``type`` names the
+    scorer; remaining keys are passed as kwargs to the factory.
+    """
+    if isinstance(spec, dict):
+        return _resolve_dict_spec(spec)
+    return _resolve_string_spec(spec, workflow_dir)
+
+
+def _resolve_string_spec(name: str, workflow_dir: Path | None) -> Callable[..., bool]:
+    """Resolve the legacy string form. Same behavior as pre-dict-form ``resolve_scorer``."""
     # Check for parameterized built-in
     match = _PARAM_PATTERN.match(name)
     if match:
@@ -89,6 +121,28 @@ def resolve_scorer(name: str, workflow_dir: Path | None = None) -> Callable[[Any
 
     msg = f'Unknown scorer "{name}"'
     raise ValueError(msg)
+
+
+def _resolve_dict_spec(spec: dict[str, Any]) -> Callable[..., bool]:
+    """Resolve a dict-form scorer spec by calling the named factory with remaining keys as kwargs."""
+    kwargs = dict(spec)
+    scorer_type = kwargs.pop('type', None)
+    if scorer_type is None:
+        msg = f'Scorer dict must include a "type" key, got keys: {sorted(spec)}'
+        raise ValueError(msg)
+
+    factory = _BUILTIN_SCORERS.get(scorer_type)
+    if factory is None:
+        msg = f'Dict-form scorer "{scorer_type}" is not a known built-in'
+        raise ValueError(msg)
+
+    if scorer_type in _FACTORY_SCORERS:
+        return factory(**kwargs)
+
+    if kwargs:
+        msg = f'Scorer "{scorer_type}" does not accept kwargs: {sorted(kwargs)}'
+        raise ValueError(msg)
+    return factory
 
 
 def scorer_accepts_input_data(fn: Callable[..., Any]) -> bool:

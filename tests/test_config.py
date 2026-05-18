@@ -187,6 +187,46 @@ def test_load_workflow_accepts_custom_scorer_path(full_project):
     assert wf.scorers['topic'] == 'scorers.my_custom'
 
 
+def test_load_workflow_accepts_dict_form_scorer(full_project):
+    """YAML scorer expressed as a dict with type + kwargs loads through and stays a dict."""
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(
+        WORKFLOW_YAML.replace(
+            'topic: exact_match',
+            'topic:\n    type: fuzzy_match\n    threshold: 0.9',
+        )
+    )
+
+    wf = load_workflow(full_project, 'classify')
+    assert wf.scorers['topic'] == {'type': 'fuzzy_match', 'threshold': 0.9}
+
+
+def test_load_workflow_rejects_dict_form_missing_type(full_project):
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(
+        WORKFLOW_YAML.replace(
+            'topic: exact_match',
+            'topic:\n    threshold: 0.9',
+        )
+    )
+
+    with pytest.raises(ValueError, match='must include a "type" key'):
+        load_workflow(full_project, 'classify')
+
+
+def test_load_workflow_rejects_dict_form_unknown_type(full_project):
+    wf_path = full_project / 'workflows' / 'classify' / 'workflow.yaml'
+    wf_path.write_text(
+        WORKFLOW_YAML.replace(
+            'topic: exact_match',
+            'topic:\n    type: nonesuch',
+        )
+    )
+
+    with pytest.raises(ValueError, match='Unknown scorer "nonesuch"'):
+        load_workflow(full_project, 'classify')
+
+
 def test_load_implementation_parses_transform_block(full_project):
     impl_path = full_project / 'implementations' / 'classify-api' / 'implementation.yaml'
     impl_path.write_text(

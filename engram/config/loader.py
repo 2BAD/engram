@@ -10,7 +10,7 @@ from engram.models.implementation import ConfigManagement, ImplementationConfig,
 from engram.models.project import ProjectConfig
 from engram.models.workflow import OutputField, WorkflowConfig
 from engram.runners.registry import validate_runner_name
-from engram.scoring.registry import validate_scorer_name
+from engram.scoring.registry import validate_scorer_spec
 from engram.transforms import validate_transform_name
 
 
@@ -48,10 +48,10 @@ def load_workflow(root: Path, name: str) -> WorkflowConfig:
         )
 
     scorers = raw.get('scorers', {})
-    for field_name, scorer_name in scorers.items():
+    for field_name, scorer_spec in scorers.items():
         try:
-            validate_scorer_name(scorer_name)
-        except ValueError as e:
+            validate_scorer_spec(scorer_spec)
+        except (ValueError, TypeError) as e:
             msg = f'workflow "{name}" field "{field_name}": {e}'
             raise ValueError(msg) from e
 

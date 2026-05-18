@@ -117,7 +117,7 @@ def build_comparison_context(
 def _sample_examples(
     results: list[RunResult],
     labels: dict[str, dict[str, Any]],
-    scorers: dict[str, str],
+    scorers: dict[str, str | dict[str, Any]],
     max_examples: int,
 ) -> list[dict[str, Any]]:
     """

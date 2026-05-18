@@ -16,7 +16,7 @@ from engram.scoring.metrics import (
     compute_cost_stats,
     compute_field_metrics,
 )
-from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
+from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data, validate_scorer_spec
 from engram.scoring.scorers import (
     contains,
     contains_all,
@@ -271,6 +271,62 @@ def test_resolve_custom_scorer(tmp_path: Path):
     scorer = resolve_scorer('scorers.my_scorer', workflow_dir=tmp_path)
     assert scorer('A', 'A')
     assert not scorer('A', 'B')
+
+
+def test_resolve_dict_spec_factory_with_kwargs():
+    """The threshold kwarg must reach the factory — same pair scored differently at two thresholds."""
+    strict = resolve_scorer({'type': 'fuzzy_match', 'threshold': 0.99})
+    loose = resolve_scorer({'type': 'fuzzy_match', 'threshold': 0.5})
+    pair = ('hello world', 'hello worl')
+    assert not strict(*pair)
+    assert loose(*pair)
+
+
+def test_resolve_dict_spec_factory_with_defaults():
+    scorer = resolve_scorer({'type': 'fuzzy_match'})
+    # Default threshold is 0.8 — matches resolve_scorer('fuzzy_match') behavior.
+    assert scorer('hello world', 'hello worl')
+
+
+def test_resolve_dict_spec_non_factory_no_kwargs():
+    scorer = resolve_scorer({'type': 'exact_match'})
+    assert scorer('A', 'A')
+    assert not scorer('A', 'B')
+
+
+def test_resolve_dict_spec_non_factory_with_kwargs_errors():
+    with pytest.raises(ValueError, match='does not accept kwargs'):
+        resolve_scorer({'type': 'exact_match', 'threshold': 0.5})
+
+
+def test_resolve_dict_spec_missing_type_errors():
+    with pytest.raises(ValueError, match='must include a "type" key'):
+        resolve_scorer({'threshold': 0.5})
+
+
+def test_resolve_dict_spec_unknown_type_errors():
+    with pytest.raises(ValueError, match='is not a known built-in'):
+        resolve_scorer({'type': 'nonesuch'})
+
+
+def test_validate_scorer_spec_accepts_string():
+    validate_scorer_spec('exact_match')
+    validate_scorer_spec('fuzzy_match(0.9)')
+    validate_scorer_spec('scorers.custom')
+
+
+def test_validate_scorer_spec_accepts_dict():
+    validate_scorer_spec({'type': 'fuzzy_match', 'threshold': 0.9})
+
+
+def test_validate_scorer_spec_rejects_dict_missing_type():
+    with pytest.raises(ValueError, match='must include a "type" key'):
+        validate_scorer_spec({'threshold': 0.9})
+
+
+def test_validate_scorer_spec_rejects_non_string_non_dict():
+    with pytest.raises(TypeError, match='must be a string or dict'):
+        validate_scorer_spec(42)  # ty: ignore[invalid-argument-type]
 
 
 # --- Metrics ---
