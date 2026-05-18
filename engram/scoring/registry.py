@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from engram.scoring import scorers as builtin_scorers
+from engram.scoring.llm_judge import llm_judge as _llm_judge
 
 _BUILTIN_SCORERS: dict[str, Any] = {
     'exact_match': builtin_scorers.exact_match,
@@ -22,9 +23,10 @@ _BUILTIN_SCORERS: dict[str, Any] = {
     'numeric_tolerance': builtin_scorers.numeric_tolerance,
     'json_match': builtin_scorers.json_match,
     'regex': builtin_scorers.regex,
+    'llm_judge': _llm_judge,
 }
 
-_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance', 'json_match', 'regex'}
+_FACTORY_SCORERS = {'fuzzy_match', 'numeric_tolerance', 'json_match', 'regex', 'llm_judge'}
 
 # Pattern for parameterized scorers like "numeric_tolerance(0.1)" or "fuzzy_match(0.9)"
 _PARAM_PATTERN = re.compile(r'^(\w+)\((.+)\)$')
