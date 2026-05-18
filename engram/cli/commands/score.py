@@ -46,6 +46,13 @@ def score_command(
             '--dataset', '-d', help='Scope @ / @~N resolution to this dataset', autocompletion=complete_datasets
         ),
     ] = None,
+    no_judge_cache: Annotated[
+        bool,
+        typer.Option(
+            '--no-judge-cache',
+            help='Bypass the on-disk cache for llm_judge scorer calls (re-runs incur fresh API spend)',
+        ),
+    ] = False,
 ) -> None:
     """Score experiment results against dataset labels."""
     root = find_project_root()
@@ -64,7 +71,7 @@ def score_command(
         console.print(f'[red]Experiment not found: {experiment_id}[/red]')
         raise typer.Exit(1)
 
-    report = score_experiment(root, experiment_id)
+    report = score_experiment(root, experiment_id, disable_judge_cache=no_judge_cache)
     if get_output_mode().use_rich:
         print_eval_report(report)
     else:

@@ -1,10 +1,11 @@
 """Tests for the LLM-as-judge scorer."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 from engram.analysis.analyzer import LLMCallResult
 from engram.models.input import InputData
-from engram.scoring.llm_judge import JUDGE_CALLS_ATTR, _parse_score, llm_judge
+from engram.scoring.llm_judge import JUDGE_STATE_ATTR, JudgeState, _parse_score, llm_judge
 from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
 
 
@@ -135,9 +136,10 @@ def test_llm_judge_attaches_call_log_for_engine_aggregation():
         scorer('p2', 'e2')
         scorer('p3', 'e3')
 
-    log = getattr(scorer, JUDGE_CALLS_ATTR)
-    assert len(log) == 3
-    assert all(call.cost_usd == 0.0001 for call in log)
+    state = getattr(scorer, JUDGE_STATE_ATTR)
+    assert isinstance(state, JudgeState)
+    assert len(state.calls) == 3
+    assert all(call.cost_usd == 0.0001 for call in state.calls)
 
 
 def test_llm_judge_call_log_per_scorer_instance():
@@ -149,5 +151,74 @@ def test_llm_judge_call_log_per_scorer_instance():
         scorer_a('p', 'e')
         scorer_b('p', 'e')
 
-    assert len(getattr(scorer_a, JUDGE_CALLS_ATTR)) == 2
-    assert len(getattr(scorer_b, JUDGE_CALLS_ATTR)) == 1
+    assert len(getattr(scorer_a, JUDGE_STATE_ATTR).calls) == 2
+    assert len(getattr(scorer_b, JUDGE_STATE_ATTR).calls) == 1
+
+
+# --- Judge response cache ---
+
+
+def test_llm_judge_cache_hits_skip_the_llm_call(tmp_path: Path):
+    """Same prompt twice with a cache dir set → LLM called once, second call comes from disk."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)) as mock:
+        scorer = llm_judge('criteria', threshold=0.5)
+        getattr(scorer, JUDGE_STATE_ATTR).cache_dir = tmp_path
+        assert scorer('predicted', 'expected') is True
+        assert scorer('predicted', 'expected') is True
+        assert mock.call_count == 1
+
+
+def test_llm_judge_cache_miss_invalidates_on_changed_input(tmp_path: Path):
+    """Changing predicted/expected text rebuilds the cache key and forces a fresh call."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)) as mock:
+        scorer = llm_judge('criteria', threshold=0.5)
+        getattr(scorer, JUDGE_STATE_ATTR).cache_dir = tmp_path
+        scorer('predicted-a', 'expected')
+        scorer('predicted-b', 'expected')
+        assert mock.call_count == 2
+
+
+def test_llm_judge_cache_disabled_flag_bypasses_disk(tmp_path: Path):
+    """state.cache_disabled forces fresh API spend even when the cache dir is set."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)) as mock:
+        scorer = llm_judge('criteria', threshold=0.5)
+        state = getattr(scorer, JUDGE_STATE_ATTR)
+        state.cache_dir = tmp_path
+        state.cache_disabled = True
+        scorer('predicted', 'expected')
+        scorer('predicted', 'expected')
+        assert mock.call_count == 2
+
+
+def test_llm_judge_writes_cache_file_on_miss(tmp_path: Path):
+    """A miss persists the LLMCallResult under cache_dir as a JSON file."""
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)):
+        scorer = llm_judge('criteria', threshold=0.5)
+        getattr(scorer, JUDGE_STATE_ATTR).cache_dir = tmp_path
+        scorer('predicted', 'expected')
+
+    files = list(tmp_path.glob('*.json'))
+    assert len(files) == 1
+
+
+def test_llm_judge_corrupt_cache_falls_back_to_call(tmp_path: Path):
+    """A garbage cache file is treated as a miss; the next call refreshes it."""
+    # Pre-seed cache_dir with a junk file matching no key; nothing should error on read.
+    (tmp_path / 'nonsense.json').write_text('this is not json')
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)) as mock:
+        scorer = llm_judge('criteria', threshold=0.5)
+        getattr(scorer, JUDGE_STATE_ATTR).cache_dir = tmp_path
+        assert scorer('predicted', 'expected') is True
+        assert mock.call_count == 1
+
+
+def test_llm_judge_no_cache_dir_means_no_caching(tmp_path: Path):
+    """Without state.cache_dir set, the scorer behaves as if no cache exists. tmp_path is just here for parity."""
+    _ = tmp_path
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=_fake_call(0.9)) as mock:
+        scorer = llm_judge('criteria', threshold=0.5)
+        # state.cache_dir defaults to None.
+        scorer('predicted', 'expected')
+        scorer('predicted', 'expected')
+        assert mock.call_count == 2

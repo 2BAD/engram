@@ -1290,3 +1290,47 @@ def test_load_saved_report_round_trips_judging_fields(tmp_path: Path):
     assert restored.judging_cost_usd == pytest.approx(0.003)
     assert restored.judging_input_tokens == 240
     assert restored.judging_output_tokens == 60
+
+
+def test_score_experiment_caches_judge_calls_across_runs(tmp_path: Path):
+    """Re-scoring the same experiment with unchanged criteria/inputs serves all judge calls from cache."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake) as mock:
+        score_experiment(tmp_path, experiment_id)
+        first_call_count = mock.call_count
+        score_experiment(tmp_path, experiment_id)
+        second_call_count = mock.call_count
+
+    assert first_call_count == 3
+    assert second_call_count == 3  # second run produced 0 fresh LLM calls
+    assert (tmp_path / 'experiments' / experiment_id / 'judge_cache').exists()
+
+
+def test_score_experiment_no_judge_cache_forces_fresh_calls(tmp_path: Path):
+    """disable_judge_cache makes the second pass hit the API again."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake) as mock:
+        score_experiment(tmp_path, experiment_id)
+        score_experiment(tmp_path, experiment_id, disable_judge_cache=True)
+
+    assert mock.call_count == 6  # first run: 3 fresh; second run: 3 fresh (cache bypassed)
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_score_command_no_judge_cache_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The CLI flag --no-judge-cache wires through to disable the cache for that invocation."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+    monkeypatch.chdir(tmp_path)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake) as mock:
+        first = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id])
+        second = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['score', experiment_id, '--no-judge-cache'])
+
+    assert first.exit_code == 0
+    assert second.exit_code == 0
+    assert mock.call_count == 6  # second invocation ignored the cache

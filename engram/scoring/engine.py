@@ -10,7 +10,7 @@ from engram.config.loader import load_implementation, load_workflow
 from engram.datasets.loader import compute_labels_hash, load_dataset_inputs, load_dataset_labels
 from engram.eval.results import load_results
 from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
-from engram.scoring.llm_judge import JUDGE_CALLS_ATTR
+from engram.scoring.llm_judge import JUDGE_STATE_ATTR, JudgeState
 from engram.scoring.metrics import (
     compute_accuracy_stdev,
     compute_agreement_metrics,
@@ -63,7 +63,7 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
     )
 
 
-def score_experiment(root: Path, experiment_id: str) -> EvalReport:
+def score_experiment(root: Path, experiment_id: str, *, disable_judge_cache: bool = False) -> EvalReport:
     """Score an experiment's results against dataset labels."""
     exp_dir = root / 'experiments' / experiment_id
     metadata, results = load_results(exp_dir)
@@ -74,6 +74,7 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
 
     labels = load_dataset_labels(root, metadata['dataset'])
     resolved_scorers = {name: resolve_scorer(scorer, workflow_dir) for name, scorer in wf.scorers.items()}
+    _configure_judge_cache(resolved_scorers, exp_dir, disabled=disable_judge_cache)
 
     # Load dataset inputs only when at least one scorer asks for them (e.g. an LLM judge that
     # grades a summary against its source). Avoids reading binary files into memory otherwise.
@@ -163,17 +164,27 @@ def score_experiment(root: Path, experiment_id: str) -> EvalReport:
     )
 
 
+def _configure_judge_cache(scorers: dict[str, Any], exp_dir: Path, *, disabled: bool) -> None:
+    """Point each judge scorer's cache at this experiment's judge_cache directory."""
+    cache_dir = exp_dir / 'judge_cache'
+    for scorer_fn in scorers.values():
+        state = getattr(scorer_fn, JUDGE_STATE_ATTR, None)
+        if isinstance(state, JudgeState):
+            state.cache_dir = cache_dir
+            state.cache_disabled = disabled
+
+
 def _aggregate_judge_costs(scorers: dict[str, Any]) -> tuple[float, int, int, int]:
-    """Sum LLMCallResult logs left behind by llm_judge scorers; non-judge scorers carry no attribute and are skipped."""
+    """Sum LLMCallResult logs left behind by llm_judge scorers; non-judge scorers carry no state and are skipped."""
     cost = 0.0
     input_tokens = 0
     output_tokens = 0
     calls = 0
     for scorer_fn in scorers.values():
-        log = getattr(scorer_fn, JUDGE_CALLS_ATTR, None)
-        if log is None:
+        state = getattr(scorer_fn, JUDGE_STATE_ATTR, None)
+        if not isinstance(state, JudgeState):
             continue
-        for call in log:
+        for call in state.calls:
             cost += call.cost_usd
             input_tokens += call.input_tokens
             output_tokens += call.output_tokens
