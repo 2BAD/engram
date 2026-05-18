@@ -58,11 +58,7 @@ def append_to_index(root: Path, report: EvalReport) -> None:
 
     _attach_cache_stats(summary, report, results)
 
-    # Fingerprint of the labels this experiment was scored against. Lets
-    # `engram experiments list` flag rows whose stored hash no longer matches
-    # the current labels on disk. Omitted when the report predates fingerprinting.
-    if report.labels_hash:
-        summary['labels_hash'] = report.labels_hash
+    _attach_fingerprints(summary, report)
 
     # Repeat-aware metrics. Persist only when at least one field carries them so single-repeat
     # entries keep the schema they had before Tier 2. The walrus filters narrow the optional types
@@ -113,6 +109,14 @@ def append_to_index(root: Path, report: EvalReport) -> None:
         for entry in existing:
             tmp.write(json.dumps(entry) + '\n')
     Path(tmp.name).replace(index_path)
+
+
+def _attach_fingerprints(summary: dict[str, Any], report: EvalReport) -> None:
+    """Add the labels and judge-config fingerprints when populated. Older reports leave both keys off."""
+    if report.labels_hash:
+        summary['labels_hash'] = report.labels_hash
+    if report.judge_config_hash:
+        summary['judge_config_hash'] = report.judge_config_hash
 
 
 def _attach_judging_stats(summary: dict[str, Any], report: EvalReport) -> None:

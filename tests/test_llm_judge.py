@@ -5,7 +5,13 @@ from unittest.mock import patch
 
 from engram.analysis.analyzer import LLMCallResult
 from engram.models.input import InputData
-from engram.scoring.llm_judge import JUDGE_STATE_ATTR, JudgeState, _parse_score, llm_judge
+from engram.scoring.llm_judge import (
+    JUDGE_STATE_ATTR,
+    JudgeState,
+    _parse_score,
+    compute_judge_config_hash,
+    llm_judge,
+)
 from engram.scoring.registry import resolve_scorer, scorer_accepts_input_data
 
 
@@ -222,3 +228,66 @@ def test_llm_judge_no_cache_dir_means_no_caching(tmp_path: Path):
         scorer('predicted', 'expected')
         scorer('predicted', 'expected')
         assert mock.call_count == 2
+
+
+# --- Judge config fingerprint ---
+
+
+def test_compute_judge_config_hash_empty_for_non_judge_workflow():
+    assert compute_judge_config_hash({}) == ''
+    assert compute_judge_config_hash({'topic': 'exact_match'}) == ''
+    assert compute_judge_config_hash({'conf': 'fuzzy_match(0.9)'}) == ''
+
+
+def test_compute_judge_config_hash_includes_only_llm_judge_specs():
+    """Dict-form scorers other than llm_judge are not part of the fingerprint."""
+    hash_judge_only = compute_judge_config_hash({'summary': {'type': 'llm_judge', 'criteria': 'x', 'threshold': 0.7}})
+    hash_with_extra = compute_judge_config_hash(
+        {
+            'summary': {'type': 'llm_judge', 'criteria': 'x', 'threshold': 0.7},
+            'topic': 'exact_match',
+        }
+    )
+    assert hash_judge_only == hash_with_extra
+    assert hash_judge_only != ''
+
+
+def test_compute_judge_config_hash_is_deterministic():
+    spec: dict[str, str | dict[str, object]] = {
+        'summary': {'type': 'llm_judge', 'criteria': 'criteria text', 'threshold': 0.7},
+    }
+    assert compute_judge_config_hash(spec) == compute_judge_config_hash(spec)
+
+
+def test_compute_judge_config_hash_changes_with_criteria():
+    a = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'a'}})
+    b = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'b'}})
+    assert a != b
+
+
+def test_compute_judge_config_hash_changes_with_model():
+    a = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'x', 'model': 'claude-sonnet-4-6'}})
+    b = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'x', 'model': 'claude-haiku-4-5'}})
+    assert a != b
+
+
+def test_compute_judge_config_hash_changes_with_threshold():
+    a = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'x', 'threshold': 0.7}})
+    b = compute_judge_config_hash({'s': {'type': 'llm_judge', 'criteria': 'x', 'threshold': 0.8}})
+    assert a != b
+
+
+def test_compute_judge_config_hash_field_order_independent():
+    a = compute_judge_config_hash(
+        {
+            'summary': {'type': 'llm_judge', 'criteria': 'x'},
+            'coherence': {'type': 'llm_judge', 'criteria': 'y'},
+        }
+    )
+    b = compute_judge_config_hash(
+        {
+            'coherence': {'type': 'llm_judge', 'criteria': 'y'},
+            'summary': {'type': 'llm_judge', 'criteria': 'x'},
+        }
+    )
+    assert a == b

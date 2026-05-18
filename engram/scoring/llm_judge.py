@@ -110,6 +110,25 @@ def _build_user_message(
     return '\n\n'.join(parts)
 
 
+def compute_judge_config_hash(scorers: dict[str, str | dict[str, Any]]) -> str:
+    """
+    Fingerprint the llm_judge specs in a workflow's scorers, or '' when no judges are used.
+
+    Lets `engram compare` warn when two experiments were judged with different criteria/model/
+    threshold, since judging accuracy can move purely because the rubric changed. Non-judge
+    scorer changes are out of scope here — they're surfaced by the existing config-snapshot diff.
+    """
+    judge_specs = {
+        field_name: spec
+        for field_name, spec in scorers.items()
+        if isinstance(spec, dict) and spec.get('type') == 'llm_judge'
+    }
+    if not judge_specs:
+        return ''
+    canonical = json.dumps(judge_specs, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
 def _cache_key(model: str, system_prompt: str, user_message: str) -> str:
     """Content-address the LLM call so identical prompts hit the same cache entry across runs."""
     payload = f'{model}\x00{system_prompt}\x00{user_message}'.encode()

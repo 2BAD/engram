@@ -27,6 +27,11 @@ class ComparisonResult:
     # detect ground-truth drift between two same-dataset experiments.
     labels_a: dict[str, object] = field(default_factory=dict)
     labels_b: dict[str, object] = field(default_factory=dict)
+    # Fingerprint of the llm_judge specs each experiment used at scoring time. Empty
+    # dict when the experiment had no judges. Consumed by the CLI to warn when judge
+    # config drifted between two runs (rubric change vs model change confusion).
+    judge_a: dict[str, str] = field(default_factory=dict)
+    judge_b: dict[str, str] = field(default_factory=dict)
     regressions: list[str] = field(default_factory=list)
 
 
@@ -118,6 +123,8 @@ def compare_experiments(
         cost_b=_cost_dict(report_b),
         labels_a=_labels_meta(report_a),
         labels_b=_labels_meta(report_b),
+        judge_a=_judge_meta(report_a),
+        judge_b=_judge_meta(report_b),
         regressions=regressions,
     )
 
@@ -143,6 +150,13 @@ def _labels_meta(report: EvalReport) -> dict[str, object]:
         'count': report.labels_count,
         'scored_at': report.labels_scored_at,
     }
+
+
+def _judge_meta(report: EvalReport) -> dict[str, str]:
+    """Project the judge config fingerprint into the comparison payload."""
+    if not report.judge_config_hash:
+        return {}
+    return {'hash': report.judge_config_hash}
 
 
 def diff_config_snapshots(root: Path, id_a: str, id_b: str, show_prompts: bool = False) -> list[str]:

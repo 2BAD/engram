@@ -263,6 +263,26 @@ def test_append_to_index_omits_judging_when_unused(tmp_path: Path):
     assert 'judging' not in entry
 
 
+def test_append_to_index_carries_judge_config_hash(tmp_path: Path):
+    """The judge_config_hash from a scored report mirrors into the index summary when populated."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-judge-hash', 'classify-api', 'test-ds', 'A')
+
+    report = EvalReport(experiment_id='exp-judge-hash', field_metrics=[], judge_config_hash='e' * 64)
+    append_to_index(tmp_path, report)
+
+    assert read_index(tmp_path)[0]['judge_config_hash'] == 'e' * 64
+
+
+def test_append_to_index_omits_judge_config_hash_when_absent(tmp_path: Path):
+    """Reports without judge_config_hash don't add an empty field to the summary row."""
+    (tmp_path / 'experiments').mkdir()
+    _setup_experiment(tmp_path, 'exp-no-judge-hash', 'classify-api', 'test-ds', 'A')
+
+    append_to_index(tmp_path, EvalReport(experiment_id='exp-no-judge-hash', field_metrics=[]))
+    assert 'judge_config_hash' not in read_index(tmp_path)[0]
+
+
 # --- resolve_experiment_id ---
 
 
@@ -1031,7 +1051,15 @@ def test_compare_command_json_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert payload['regressions'] == ['topic']
 
 
-def _write_eval_json(root: Path, experiment_id: str, labels_hash: str, labels_count: int, scored_at: str) -> None:
+def _write_eval_json(
+    root: Path,
+    experiment_id: str,
+    labels_hash: str,
+    labels_count: int,
+    scored_at: str,
+    *,
+    judge_config_hash: str = '',
+) -> None:
     """Pre-seed a saved eval report so compare_experiments reads it instead of re-scoring."""
     (root / 'experiments' / experiment_id / 'eval.json').write_text(
         json.dumps(
@@ -1047,6 +1075,7 @@ def _write_eval_json(root: Path, experiment_id: str, labels_hash: str, labels_co
                 'labels_hash': labels_hash,
                 'labels_count': labels_count,
                 'labels_scored_at': scored_at,
+                'judge_config_hash': judge_config_hash,
             }
         )
     )
@@ -1100,3 +1129,72 @@ def test_compare_command_no_warning_when_labels_hash_matches(tmp_path: Path, mon
 
     assert result.exit_code == 0
     assert 'label set differs' not in result.output
+
+
+def test_compare_experiments_populates_judge_fingerprint(tmp_path: Path):
+    """ComparisonResult carries judge_config_hash from each saved report."""
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    _write_eval_json(tmp_path, id_a, 'a' * 64, 50, '2026-01-01T00:00:00+00:00', judge_config_hash='1' * 64)
+    _write_eval_json(tmp_path, id_b, 'a' * 64, 50, '2026-03-14T00:00:00+00:00', judge_config_hash='2' * 64)
+
+    result = compare_experiments(tmp_path, id_a, id_b)
+    assert result.judge_a == {'hash': '1' * 64}
+    assert result.judge_b == {'hash': '2' * 64}
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_warns_on_judge_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Rich compare output warns when two experiments have different judge_config_hash values."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    same_labels = 'c' * 64
+    _write_eval_json(tmp_path, id_a, same_labels, 50, '2026-01-01T00:00:00+00:00', judge_config_hash='1' * 64)
+    _write_eval_json(tmp_path, id_b, same_labels, 50, '2026-03-14T00:00:00+00:00', judge_config_hash='2' * 64)
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'judge config differs' in result.output
+    assert '111111111111' in result.output  # truncated judge hash A
+    assert '222222222222' in result.output  # truncated judge hash B
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_no_warning_when_judge_hash_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """No judge drift warning when both experiments used the same llm_judge config."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    same_hash = 'd' * 64
+    _write_eval_json(tmp_path, id_a, 'c' * 64, 50, '2026-01-01T00:00:00+00:00', judge_config_hash=same_hash)
+    _write_eval_json(tmp_path, id_b, 'c' * 64, 50, '2026-03-14T00:00:00+00:00', judge_config_hash=same_hash)
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'judge config differs' not in result.output
+
+
+@pytest.mark.usefixtures('rich_mode')
+def test_compare_command_no_judge_warning_when_one_side_has_no_judges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A workflow change that adds (or removes) judges shouldn't fire the same-config-differs warning."""
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    from engram.cli import app  # noqa: PLC0415
+
+    id_a, id_b = _setup_project_with_experiments(tmp_path)
+    _write_eval_json(tmp_path, id_a, 'c' * 64, 50, '2026-01-01T00:00:00+00:00', judge_config_hash='')
+    _write_eval_json(tmp_path, id_b, 'c' * 64, 50, '2026-03-14T00:00:00+00:00', judge_config_hash='1' * 64)
+
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner(env={'COLUMNS': '200'}).invoke(app, ['compare', id_a, id_b])
+
+    assert result.exit_code == 0
+    assert 'judge config differs' not in result.output

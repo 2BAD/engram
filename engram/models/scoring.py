@@ -88,3 +88,7 @@ class EvalReport:
     judging_input_tokens: int = 0
     judging_output_tokens: int = 0
     judging_calls: int = 0
+    # Fingerprint of the llm_judge specs (criteria/model/threshold/reference_free) used at
+    # scoring time. Empty for workflows without judges. Consumed by `engram compare` to flag
+    # the case where two experiments' judging accuracy mixes model change with rubric change.
+    judge_config_hash: str = ''

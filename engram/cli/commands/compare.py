@@ -136,6 +136,22 @@ def _warn_labels_drift(result: ComparisonResult, from_meta: dict, to_meta: dict)
     console.print()
 
 
+def _warn_judge_drift(result: ComparisonResult) -> None:
+    """Warn when two experiments used different llm_judge configs (rubric or model change)."""
+    hash_a = result.judge_a.get('hash')
+    hash_b = result.judge_b.get('hash')
+    if not hash_a or not hash_b or hash_a == hash_b:
+        return
+    console.print(
+        '[yellow]Warning: judge config differs between these experiments — '
+        'judging accuracy deltas mix model change with rubric change.[/yellow]'
+    )
+    console.print(f'  A: judge hash {hash_a[:12]}')
+    console.print(f'  B: judge hash {hash_b[:12]}')
+    console.print('  Re-score with a consistent workflow.yaml to compare apples to apples.')
+    console.print()
+
+
 def _resolve_compare_pair(
     root: Path,
     experiment_a: str,
@@ -184,6 +200,7 @@ def _render_comparison(
     console.print()
 
     _warn_labels_drift(result, from_meta, to_meta)
+    _warn_judge_drift(result)
 
     if output_format is CompareFormat.SUMMARY:
         _print_summary_table(list(result.field_deltas.values()), from_short, to_short)

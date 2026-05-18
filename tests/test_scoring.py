@@ -1334,3 +1334,37 @@ def test_score_command_no_judge_cache_flag(tmp_path: Path, monkeypatch: pytest.M
     assert first.exit_code == 0
     assert second.exit_code == 0
     assert mock.call_count == 6  # second invocation ignored the cache
+
+
+def test_score_experiment_records_judge_config_hash(tmp_path: Path):
+    """A workflow using llm_judge populates judge_config_hash on the report."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake):
+        report = score_experiment(tmp_path, experiment_id)
+
+    assert len(report.judge_config_hash) == 64  # SHA-256 hex digest
+
+
+def test_score_experiment_leaves_judge_config_hash_empty_without_judges(tmp_path: Path):
+    """Workflows without llm_judge scorers don't get a fingerprint."""
+    experiment_id = _setup_scored_project(tmp_path)
+    report = score_experiment(tmp_path, experiment_id)
+    assert report.judge_config_hash == ''
+
+
+def test_load_saved_report_round_trips_judge_config_hash(tmp_path: Path):
+    """eval.json carries judge_config_hash and load_saved_report restores it."""
+    experiment_id = _setup_judge_project(tmp_path)
+    fake = LLMCallResult(text='{"score": 0.9, "reason": "ok"}', input_tokens=80, output_tokens=20, cost_usd=0.001)
+
+    with patch('engram.scoring.llm_judge.call_anthropic_messages', return_value=fake):
+        report = score_experiment(tmp_path, experiment_id)
+
+    eval_path = tmp_path / 'experiments' / experiment_id / 'eval.json'
+    eval_path.write_text(json.dumps(asdict(report), indent=2))
+
+    restored = load_saved_report(tmp_path, experiment_id)
+    assert restored is not None
+    assert restored.judge_config_hash == report.judge_config_hash

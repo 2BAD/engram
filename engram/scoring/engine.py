@@ -10,7 +10,7 @@ from engram.config.loader import load_implementation, load_workflow
 from engram.datasets.loader import compute_labels_hash, load_dataset_inputs, load_dataset_labels
 from engram.eval.results import load_results
 from engram.models.scoring import ConfusionMatrix, EvalReport, FieldMetrics
-from engram.scoring.llm_judge import JUDGE_STATE_ATTR, JudgeState
+from engram.scoring.llm_judge import JUDGE_STATE_ATTR, JudgeState, compute_judge_config_hash
 from engram.scoring.metrics import (
     compute_accuracy_stdev,
     compute_agreement_metrics,
@@ -60,6 +60,7 @@ def load_saved_report(root: Path, experiment_id: str) -> EvalReport | None:
         judging_input_tokens=raw.get('judging_input_tokens', 0),
         judging_output_tokens=raw.get('judging_output_tokens', 0),
         judging_calls=raw.get('judging_calls', 0),
+        judge_config_hash=raw.get('judge_config_hash', ''),
     )
 
 
@@ -160,6 +161,7 @@ def score_experiment(root: Path, experiment_id: str, *, disable_judge_cache: boo
         judging_input_tokens=judging_in_tokens,
         judging_output_tokens=judging_out_tokens,
         judging_calls=judging_calls,
+        judge_config_hash=compute_judge_config_hash(wf.scorers),
         labels_scored_at=datetime.now(UTC).isoformat(),
     )
 
