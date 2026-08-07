@@ -6,15 +6,15 @@ readme = "README.md"
 authors = [
     { name = "Jason Hyde", email = "github@2bad.me" }
 ]
-requires-python = ">=3.13"
+requires-python = "==3.14.7"
 dependencies = [
-    "anthropic>=0.100.0",
-    "httpx>=0.28.1",
-    "openai>=2.36.0",
-    "pyyaml>=6.0.3",
-    "questionary>=2.1.1",
-    "rich>=15.0.0",
-    "typer>=0.25.1",
+    "anthropic==0.100.0",
+    "httpx==0.28.1",
+    "openai==2.36.0",
+    "pyyaml==6.0.3",
+    "questionary==2.1.1",
+    "rich==15.0.0",
+    "typer==0.25.1",
 ]
 
 # LiteLLM is opt-in because the published stable (1.83.14) pins click, openai,
@@ -24,8 +24,8 @@ dependencies = [
 # extra needs `--prerelease allow`.
 [project.optional-dependencies]
 litellm = [
-    "litellm>=1.85.0.dev2",
-    "python-dotenv>=1.0.0",
+    "litellm==1.85.0.dev2",
+    "python-dotenv==1.2.2",
 ]
 
 # LiteLLM's wheel caps requires-python at <3.14 (stable and prerelease), but it
@@ -56,7 +56,7 @@ requires-dist = [
 engram = "engram.cli:run"
 
 [build-system]
-requires = ["uv_build>=0.11.3,<0.12"]
+requires = ["uv_build==0.11.33"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -64,11 +64,11 @@ module-root = ""
 
 [dependency-groups]
 dev = [
-    "poethepoet>=0.45.0",
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.12",
-    "ty>=0.0.34",
+    "poethepoet==0.45.0",
+    "pytest==9.0.3",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.12",
+    "ty==0.0.34",
 ]
 
 [tool.pytest.ini_options]
